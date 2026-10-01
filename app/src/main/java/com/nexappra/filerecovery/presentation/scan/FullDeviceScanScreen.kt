@@ -534,7 +534,7 @@ private fun FullScanProgressHero(
     progressValue: Float?,
     selectedCategory: RecoveryCategory?,
 ) {
-    val trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+    val trackColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -542,14 +542,21 @@ private fun FullScanProgressHero(
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Box(
-            modifier = Modifier.size(156.dp),
+            modifier = Modifier.size(164.dp),
             contentAlignment = Alignment.Center,
         ) {
+            Surface(
+                modifier = Modifier.size(160.dp),
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
+            ) {}
+
             CircularProgressIndicator(
                 progress = { progressValue ?: 0f },
-                modifier = Modifier.size(140.dp),
-                strokeWidth = 12.dp,
-                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(144.dp),
+                strokeWidth = 10.dp,
+                color = SuccessGreen,
                 trackColor = trackColor,
                 strokeCap = StrokeCap.Round,
             )
@@ -559,12 +566,12 @@ private fun FullScanProgressHero(
             ) {
                 Text(
                     text = if (progressValue == null) "--" else "${(progress * 100).toInt()}%",
-                    style = MaterialTheme.typography.headlineSmall,
+                    style = MaterialTheme.typography.headlineMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
                     text = stringResource(R.string.scan_progress_label),
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
