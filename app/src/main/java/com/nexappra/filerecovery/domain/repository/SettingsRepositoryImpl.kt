@@ -3,6 +3,7 @@ package com.nexappra.filerecovery.data.repository
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -30,6 +31,7 @@ class SettingsRepositoryImpl @Inject constructor(
     private object Keys {
         val Language = stringPreferencesKey("selected_language")
         val Theme = stringPreferencesKey("selected_theme")
+        val IsPremium = booleanPreferencesKey("is_premium")
     }
 
     private val preferencesFlow: Flow<Preferences>
@@ -50,12 +52,15 @@ class SettingsRepositoryImpl @Inject constructor(
 
     override val selectedThemeMode: Flow<AppThemeMode> =
         preferencesFlow.map { preferences ->
-
             val storedTheme = preferences[Keys.Theme]
-
             AppThemeMode.entries.firstOrNull {
                 it.name == storedTheme
             } ?: AppThemeMode.SYSTEM
+        }
+
+    override val isPremium: Flow<Boolean> =
+        preferencesFlow.map { preferences ->
+            preferences[Keys.IsPremium] ?: false
         }
 
     override suspend fun setLanguageCode(
@@ -71,6 +76,14 @@ class SettingsRepositoryImpl @Inject constructor(
     ) {
         context.settingsDataStore.edit { preferences ->
             preferences[Keys.Theme] = themeMode.name
+        }
+    }
+
+    override suspend fun setPremium(
+        isPremium: Boolean,
+    ) {
+        context.settingsDataStore.edit { preferences ->
+            preferences[Keys.IsPremium] = isPremium
         }
     }
 }

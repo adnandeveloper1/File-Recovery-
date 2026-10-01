@@ -9,11 +9,17 @@ interface SettingsRepository {
 
     val selectedThemeMode: Flow<AppThemeMode>
 
+    val isPremium: Flow<Boolean>
+
     suspend fun setLanguageCode(
         languageCode: String,
     )
 
     suspend fun setThemeMode(
         themeMode: AppThemeMode,
+    )
+
+    suspend fun setPremium(
+        isPremium: Boolean,
     )
 }

@@ -7,4 +7,5 @@ enum class PremiumPlan {
 
 data class PremiumUiState(
     val selectedPlan: PremiumPlan = PremiumPlan.YEARLY,
+    val isPremium: Boolean = false,
 )

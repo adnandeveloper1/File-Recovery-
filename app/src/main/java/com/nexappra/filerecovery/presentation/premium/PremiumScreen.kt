@@ -43,7 +43,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 
 private val PremiumBlue = Color(0xFF2563EB)
 private val PremiumBlueLight = Color(0xFFEFF6FF)
@@ -55,7 +55,7 @@ fun PremiumRoute(
     onClose: () -> Unit,
     onContinueWithFree: () -> Unit,
     onContinueWithPremium: (PremiumPlan) -> Unit,
-    viewModel: PremiumViewModel = viewModel()
+    viewModel: PremiumViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
@@ -65,7 +65,9 @@ fun PremiumRoute(
         onClose = onClose,
         onContinueWithFree = onContinueWithFree,
         onContinueWithPremium = {
-            onContinueWithPremium(uiState.selectedPlan)
+            viewModel.activatePremium {
+                onContinueWithPremium(uiState.selectedPlan)
+            }
         }
     )
 }
