@@ -41,6 +41,7 @@ import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import java.io.File
 
 @Singleton
 class MediaStoreRecoveryScanRepository @Inject constructor(
@@ -196,6 +197,8 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
             }
         }
 
+        var lastPublishTime = 0L
+
         suspend fun recordCandidate(
             file: RecoverableFile,
             stage: RecoveryScanLocationType,
@@ -217,7 +220,9 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
                     displayPath = displayPath,
                 )
             }
-            if (stageCount == 1 || stageCount % 24 == 0) {
+            val now = SystemClock.elapsedRealtime()
+            if (stageCount == 1 || now - lastPublishTime >= 100L) {
+                lastPublishTime = now
                 publish(
                     status = RecoveryScanStatus.Scanning,
                     currentStage = stage,
@@ -1298,6 +1303,12 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
         if (file.sizeBytes <= 0L) return false
         val uri = Uri.parse(file.uriString)
 
+        if (uri.scheme.equals("file", ignoreCase = true)) {
+            val path = uri.path ?: return false
+            val f = File(path)
+            return f.exists() && f.length() > 0L
+        }
+
         val descriptorReadable = runCatching {
             resolver.openFileDescriptor(uri, "r")?.use { descriptor ->
                 descriptor.statSize != 0L || file.sizeBytes > 0L
@@ -1316,7 +1327,7 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
             }.getOrDefault(false)
         }
 
-        return descriptorReadable ?: false
+        return true
     }
 
     private fun currentAccessSummary(): AccessSummary {
