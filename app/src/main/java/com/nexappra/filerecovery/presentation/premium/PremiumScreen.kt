@@ -134,11 +134,11 @@ fun PremiumScreen(
                     .height(54.dp),
                 shape = RoundedCornerShape(15.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = PremiumBlue,
-                    contentColor = Color.White
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
                 ),
                 elevation = ButtonDefaults.buttonElevation(
-                    defaultElevation = 0.dp,
+                    defaultElevation = 2.dp,
                     pressedElevation = 1.dp
                 )
             ) {
@@ -499,22 +499,19 @@ private fun MonthlyPlanCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-
     PlanSurface(
         selected = selected,
         onClick = onClick,
         modifier = modifier
     ) {
-
         Column(
             modifier = Modifier.fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-
             Text(
                 text = "\$3.99",
-                color = MaterialTheme.colorScheme.onSurface,
+                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -523,7 +520,7 @@ private fun MonthlyPlanCard(
 
             Text(
                 text = "per month",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 11.sp
             )
         }
@@ -536,13 +533,11 @@ private fun YearlyPlanCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-
     PlanSurface(
         selected = selected,
         onClick = onClick,
         modifier = modifier
     ) {
-
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -550,10 +545,9 @@ private fun YearlyPlanCard(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-
             Text(
                 text = "BEST VALUE",
-                color = PremiumBlue,
+                color = MaterialTheme.colorScheme.primary,
                 fontSize = 9.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -562,7 +556,7 @@ private fun YearlyPlanCard(
 
             Text(
                 text = "\$19.99",
-                color = MaterialTheme.colorScheme.onSurface,
+                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -572,16 +566,15 @@ private fun YearlyPlanCard(
             Row(
                 verticalAlignment = Alignment.CenterVertically
             ) {
-
                 Text(
                     text = "per year · ",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 10.sp
                 )
 
                 Text(
                     text = "\$1.67/mo",
-                    color = PremiumBlue,
+                    color = MaterialTheme.colorScheme.primary,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -597,14 +590,8 @@ private fun PlanSurface(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit
 ) {
-
     val backgroundColor = if (selected) {
-        PremiumBlueLight.copy(
-            alpha = if (
-                MaterialTheme.colorScheme.background ==
-                Color.Black
-            ) 0.10f else 1f
-        )
+        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
     } else {
         MaterialTheme.colorScheme.surface
     }
@@ -617,9 +604,9 @@ private fun PlanSurface(
         shape = RoundedCornerShape(15.dp),
         color = backgroundColor,
         border = BorderStroke(
-            width = if (selected) 1.5.dp else 1.dp,
+            width = if (selected) 2.dp else 1.dp,
             color = if (selected) {
-                PremiumBlue
+                MaterialTheme.colorScheme.primary
             } else {
                 MaterialTheme.colorScheme.outlineVariant
             }
