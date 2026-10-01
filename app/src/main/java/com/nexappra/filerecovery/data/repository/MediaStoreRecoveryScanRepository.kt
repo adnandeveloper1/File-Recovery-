@@ -132,6 +132,8 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
                     progress = progress,
                     totalItemsScanned = itemsInspected,
                     totalFilesFound = discovered.size,
+                    hiddenPhotoCount = discovered.values.count { file -> file.isHidden && file.fileType == RecoveryFileType.Photo },
+                    hiddenVideoCount = discovered.values.count { file -> file.isHidden && file.fileType == RecoveryFileType.Video },
                     totalBytesScanned = bytesInspected,
                     estimatedRemainingMillis = estimatedRemainingMillis,
                     currentLocation = currentStage?.let { stage ->
@@ -428,7 +430,7 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
             )
         }
 
-        if (access.hasAllFilesAccess && selectedCategory != RecoveryCategory.RecycleBin) {
+        if (access.canTraverseSharedStorage && selectedCategory != RecoveryCategory.RecycleBin) {
             beginStage(RecoveryScanLocationType.AccessibleStorage)
             var filesystemCount = 0
             storageRepository.scanAccessibleSharedStorage(
@@ -469,6 +471,15 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
                 }
             }
             completeStage(RecoveryScanLocationType.AccessibleStorage, filesystemCount)
+        } else if (selectedCategory != RecoveryCategory.RecycleBin) {
+            failStage(
+                type = RecoveryScanLocationType.AccessibleStorage,
+                displayPath = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    "Enable all-files access to scan hidden shared folders"
+                } else {
+                    "Choose a folder to scan hidden files"
+                },
+            )
         }
         }
 
@@ -1093,6 +1104,7 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
     private fun RecoverableFile.matchesSelectedCategory(category: RecoveryCategory?): Boolean {
         return when (category) {
             null -> true
+            RecoveryCategory.HiddenVaults -> isHidden
             RecoveryCategory.Photos -> fileType == RecoveryFileType.Photo
             RecoveryCategory.Videos -> fileType == RecoveryFileType.Video
             RecoveryCategory.Audio -> fileType == RecoveryFileType.Audio
@@ -1109,6 +1121,7 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
     private fun RecoveryCategory?.scansImages(): Boolean = this in setOf(
         null,
         RecoveryCategory.Photos,
+        RecoveryCategory.HiddenVaults,
         RecoveryCategory.WhatsAppImages,
         RecoveryCategory.Downloads,
         RecoveryCategory.Screenshots,
@@ -1119,6 +1132,7 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
     private fun RecoveryCategory?.scansVideos(): Boolean = this in setOf(
         null,
         RecoveryCategory.Videos,
+        RecoveryCategory.HiddenVaults,
         RecoveryCategory.WhatsAppVideos,
         RecoveryCategory.Downloads,
         RecoveryCategory.RecycleBin,
@@ -1128,6 +1142,7 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
     private fun RecoveryCategory?.scansAudio(): Boolean = this in setOf(
         null,
         RecoveryCategory.Audio,
+        RecoveryCategory.HiddenVaults,
         RecoveryCategory.Downloads,
         RecoveryCategory.RecycleBin,
         RecoveryCategory.LargeFiles,
@@ -1136,6 +1151,7 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
     private fun RecoveryCategory?.scansFiles(): Boolean = this in setOf(
         null,
         RecoveryCategory.Documents,
+        RecoveryCategory.HiddenVaults,
         RecoveryCategory.Downloads,
         RecoveryCategory.RecycleBin,
         RecoveryCategory.LargeFiles,
@@ -1344,10 +1360,11 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
         val hasAllFilesAccess = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
             Environment.isExternalStorageManager()
         val safRoots = resolver.persistedUriPermissions.count { permission -> permission.isReadPermission }
-        val grantedSourceCount = listOf(hasLegacyRead, hasImages, hasVideos, hasAudio, hasSelectedVisual).count { it } +
+        val grantedSourceCount = listOf(hasLegacyRead, hasImages, hasVideos, hasAudio, hasSelectedVisual, hasAllFilesAccess).count { it } +
             safRoots
         val labels = buildList {
             if (hasLegacyRead) add("Shared storage")
+            if (hasAllFilesAccess) add("All files access")
             if (hasImages) add("Images")
             if (hasVideos) add("Videos")
             if (hasAudio) add("Audio")
@@ -1361,9 +1378,11 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
             hasAudio = hasAudio,
             hasSelectedVisual = hasSelectedVisual,
             hasAllFilesAccess = hasAllFilesAccess,
+            canTraverseSharedStorage = hasAllFilesAccess ||
+                (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q && hasLegacyRead),
             safRoots = safRoots,
             grantedSourceCount = grantedSourceCount,
-            summaryLabel = labels.joinToString(" • "),
+            summaryLabel = labels.joinToString(" Â· "),
         )
     }
 
@@ -1419,9 +1438,20 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
     private fun String.normalizePath(): String = replace('\\', '/').trim().trim('/')
 
     private fun String.hiddenPathSegments(): List<String> {
+        val hiddenKeywords = listOf(
+            "hidden", "vault", "trash", "recycle", "cache", "statuses", "status saver", "status_saver",
+            "private", "thumbnails"
+        )
         return split('/')
             .map { segment -> segment.trim() }
-            .filter { segment -> segment.isNotEmpty() && segment.startsWith(".") }
+            .filter { segment ->
+                val name = segment.lowercase()
+                name.isNotEmpty() && (
+                    name.startsWith(".") ||
+                        name == "sent" || name.startsWith("sent_") || name.startsWith("sent-") ||
+                        hiddenKeywords.any { keyword -> name.contains(keyword) }
+                    )
+            }
     }
 
     private fun String.toDisplayVolumeLabel(): String {
@@ -1510,6 +1540,7 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
         val hasAudio: Boolean,
         val hasSelectedVisual: Boolean,
         val hasAllFilesAccess: Boolean,
+        val canTraverseSharedStorage: Boolean,
         val safRoots: Int,
         val grantedSourceCount: Int,
         val summaryLabel: String,

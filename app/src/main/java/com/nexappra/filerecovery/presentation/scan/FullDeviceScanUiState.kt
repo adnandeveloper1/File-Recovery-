@@ -15,6 +15,8 @@ data class FullDeviceScanUiState(
     val progress: Float? = null,
     val totalItemsScanned: Int = 0,
     val totalFilesFound: Int = 0,
+    val hiddenPhotoCount: Int = 0,
+    val hiddenVideoCount: Int = 0,
     val totalBytesScanned: Long = 0L,
     val locationsChecked: Int = 0,
     val estimatedRemainingMillis: Long? = null,

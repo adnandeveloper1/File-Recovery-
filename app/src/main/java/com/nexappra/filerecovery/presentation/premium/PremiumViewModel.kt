@@ -32,10 +32,4 @@ class PremiumViewModel @Inject constructor(
         )
     }
 
-    fun activatePremium(onSuccess: () -> Unit) {
-        viewModelScope.launch {
-            settingsRepository.setPremium(true)
-            onSuccess()
-        }
-    }
 }

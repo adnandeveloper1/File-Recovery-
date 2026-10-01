@@ -7,6 +7,7 @@ enum class RecoveryCategory {
     Documents,
     WhatsAppImages,
     WhatsAppVideos,
+    HiddenVaults,
     Downloads,
     Screenshots,
     RecycleBin,

@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Environment
+import android.provider.Settings
+import android.net.Uri
 import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -94,17 +96,20 @@ fun FullDeviceScanRoute(
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
     var accessState by remember { mutableStateOf(context.currentFullDeviceAccessState()) }
-    var folderChoiceHandled by rememberSaveable { mutableStateOf(false) }
-    var showFolderAccessPrompt by rememberSaveable { mutableStateOf(false) }
-    var awaitingFolderSelection by rememberSaveable { mutableStateOf(false) }
+    var allFilesAccessPromptHandled by rememberSaveable { mutableStateOf(false) }
+    var showAllFilesAccessPrompt by rememberSaveable { mutableStateOf(false) }
+    var awaitingAllFilesSettings by rememberSaveable { mutableStateOf(false) }
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions(),
-    ) { result ->
-        Log.d(
-            FILE_RECOVERY_DEBUG_TAG,
-            "PERMISSION RESULT raw=$result",
-        )
+    ) {
         accessState = context.currentFullDeviceAccessState()
+    }
+    val allFilesSettingsLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult(),
+    ) {
+        accessState = context.currentFullDeviceAccessState()
+        awaitingAllFilesSettings = false
+        allFilesAccessPromptHandled = true
     }
     val folderLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
@@ -117,41 +122,43 @@ fun FullDeviceScanRoute(
                 )
             }
         }
-        folderChoiceHandled = true
-        showFolderAccessPrompt = false
-        awaitingFolderSelection = false
         accessState = context.currentFullDeviceAccessState()
     }
 
-    LaunchedEffect(accessState, folderChoiceHandled, awaitingFolderSelection) {
-        Log.d(
-            FILE_RECOVERY_DEBUG_TAG,
-            buildString {
-                appendLine("SDK=${Build.VERSION.SDK_INT}")
-                appendLine("Target SDK=${context.applicationInfo.targetSdkVersion}")
-                appendLine("READ_MEDIA_IMAGES=${context.hasPermission(Manifest.permission.READ_MEDIA_IMAGES)}")
-                appendLine("READ_MEDIA_VIDEO=${context.hasPermission(Manifest.permission.READ_MEDIA_VIDEO)}")
-                appendLine("READ_MEDIA_AUDIO=${context.hasPermission(Manifest.permission.READ_MEDIA_AUDIO)}")
-                appendLine("READ_EXTERNAL_STORAGE=${context.hasPermission(Manifest.permission.READ_EXTERNAL_STORAGE)}")
-                appendLine("All Files Access=${if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) Environment.isExternalStorageManager() else false}")
-                appendLine("Access level=${accessState.accessLevel}")
-                appendLine("Can start full device scan=${accessState.canStartFullDeviceScan}")
-                append("Access summary=${accessState.summary}")
-            },
+    fun requestAllFilesAccess() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+        awaitingAllFilesSettings = true
+        allFilesAccessPromptHandled = true
+        showAllFilesAccessPrompt = false
+        val appSettingsIntent = Intent(
+            Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+            Uri.parse("package:" + context.packageName),
         )
-        val shouldOfferFolderAccess = !awaitingFolderSelection &&
-            accessState.canStartFullDeviceScan &&
-            !folderChoiceHandled &&
-            accessState.permissions.safFolderCount == 0
-        if (awaitingFolderSelection) {
-            return@LaunchedEffect
-        } else if (shouldOfferFolderAccess) {
-            showFolderAccessPrompt = true
-        } else {
-            viewModel.onAccessStateChanged(accessState)
+        try {
+            allFilesSettingsLauncher.launch(appSettingsIntent)
+        } catch (_: Exception) {
+            try {
+                allFilesSettingsLauncher.launch(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+            } catch (_: Exception) {
+                awaitingAllFilesSettings = false
+                accessState = context.currentFullDeviceAccessState()
+            }
         }
     }
 
+    LaunchedEffect(accessState, allFilesAccessPromptHandled, awaitingAllFilesSettings) {
+        if (awaitingAllFilesSettings) return@LaunchedEffect
+        val shouldOfferAllFilesAccess = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+            accessState.canStartFullDeviceScan &&
+            !accessState.permissions.allFilesAccess &&
+            !allFilesAccessPromptHandled
+        if (shouldOfferAllFilesAccess) {
+            showAllFilesAccessPrompt = true
+        } else {
+            showAllFilesAccessPrompt = false
+            viewModel.onAccessStateChanged(accessState)
+        }
+    }
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
             when (event) {
@@ -167,17 +174,12 @@ fun FullDeviceScanRoute(
         }
     }
 
-    if (showFolderAccessPrompt) {
-        HiddenFolderAccessDialog(
-            onChooseFolder = {
-                folderChoiceHandled = true
-                showFolderAccessPrompt = false
-                awaitingFolderSelection = true
-                folderLauncher.launch(null)
-            },
-            onContinueWithoutFolder = {
-                folderChoiceHandled = true
-                showFolderAccessPrompt = false
+    if (showAllFilesAccessPrompt) {
+        AllFilesAccessDialog(
+            onEnableAllFilesAccess = ::requestAllFilesAccess,
+            onContinueWithMediaAccess = {
+                allFilesAccessPromptHandled = true
+                showAllFilesAccessPrompt = false
             },
         )
     }
@@ -186,6 +188,8 @@ fun FullDeviceScanRoute(
         uiState = uiState,
         snackbarHostState = snackbarHostState,
         onBack = onBack,
+        canRequestAllFilesAccess = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R,
+        onRequestAllFilesAccess = ::requestAllFilesAccess,
         onRequestMediaAccess = {
             permissionLauncher.launch(fullDevicePermissions())
         },
@@ -209,33 +213,34 @@ fun FullDeviceScanRoute(
 }
 
 @Composable
-private fun HiddenFolderAccessDialog(
-    onChooseFolder: () -> Unit,
-    onContinueWithoutFolder: () -> Unit,
+private fun AllFilesAccessDialog(
+    onEnableAllFilesAccess: () -> Unit,
+    onContinueWithMediaAccess: () -> Unit,
 ) {
     AlertDialog(
-        onDismissRequest = onContinueWithoutFolder,
-        title = { Text(text = stringResource(R.string.full_scan_hidden_folder_title)) },
-        text = { Text(text = stringResource(R.string.full_scan_hidden_folder_body)) },
+        onDismissRequest = onContinueWithMediaAccess,
+        title = { Text(text = stringResource(R.string.full_scan_all_files_title)) },
+        text = { Text(text = stringResource(R.string.full_scan_all_files_body)) },
         confirmButton = {
-            Button(onClick = onChooseFolder) {
-                Text(text = stringResource(R.string.full_scan_hidden_folder_action))
+            Button(onClick = onEnableAllFilesAccess) {
+                Text(text = stringResource(R.string.full_scan_all_files_action))
             }
         },
         dismissButton = {
-            TextButton(onClick = onContinueWithoutFolder) {
-                Text(text = stringResource(R.string.full_scan_hidden_folder_skip))
+            TextButton(onClick = onContinueWithMediaAccess) {
+                Text(text = stringResource(R.string.full_scan_all_files_skip))
             }
         },
     )
 }
-
 @Composable
 fun FullDeviceScanScreen(
     uiState: FullDeviceScanUiState,
     snackbarHostState: SnackbarHostState,
     onBack: () -> Unit,
     onRequestMediaAccess: () -> Unit,
+    canRequestAllFilesAccess: Boolean,
+    onRequestAllFilesAccess: () -> Unit,
     onChooseFolders: () -> Unit,
     onRetry: () -> Unit,
     onStopConfirmed: () -> Unit,
@@ -452,6 +457,8 @@ fun FullDeviceScanScreen(
                         .padding(innerPadding)
                         .padding(horizontal = spacing.large),
                     onRequestMediaAccess = onRequestMediaAccess,
+                    canRequestAllFilesAccess = canRequestAllFilesAccess,
+                    onRequestAllFilesAccess = onRequestAllFilesAccess,
                     onChooseFolders = onChooseFolders,
                     hasAuthorizedFolders = uiState.hasAuthorizedFolders,
                     accessSummary = uiState.accessSummary,
@@ -502,6 +509,8 @@ fun FullDeviceScanScreen(
                         item {
                             LimitedAccessCard(
                                 accessSummary = uiState.accessSummary,
+                                canRequestAllFilesAccess = canRequestAllFilesAccess && !uiState.permissions.allFilesAccess,
+                                onRequestAllFilesAccess = onRequestAllFilesAccess,
                             )
                         }
                     }
@@ -509,6 +518,8 @@ fun FullDeviceScanScreen(
                     item {
                         CategoryCountersCard(
                             counts = uiState.categoryCounts,
+                            hiddenPhotoCount = uiState.hiddenPhotoCount,
+                            hiddenVideoCount = uiState.hiddenVideoCount,
                         )
                     }
 
@@ -653,6 +664,8 @@ private fun FullScanStatCard(
 @Composable
 private fun LimitedAccessCard(
     accessSummary: String?,
+    canRequestAllFilesAccess: Boolean,
+    onRequestAllFilesAccess: () -> Unit,
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -677,13 +690,19 @@ private fun LimitedAccessCard(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (canRequestAllFilesAccess) {
+                TextButton(onClick = onRequestAllFilesAccess) {
+                    Text(text = stringResource(R.string.full_scan_all_files_action))
+                }
+            }
         }
     }
 }
-
 @Composable
 private fun CategoryCountersCard(
     counts: Map<RecoveryResultFilter, Int>,
+    hiddenPhotoCount: Int,
+    hiddenVideoCount: Int,
 ) {
     val items = listOf(
         RecoveryResultFilter.Photos,
@@ -738,10 +757,40 @@ private fun CategoryCountersCard(
                     }
                 }
             }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                listOf(
+                    R.string.full_scan_hidden_photos to hiddenPhotoCount,
+                    R.string.full_scan_hidden_videos to hiddenVideoCount,
+                ).forEach { (labelRes, count) ->
+                    Surface(
+                        modifier = Modifier.weight(1f),
+                        shape = MaterialTheme.shapes.medium,
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalArrangement = Arrangement.spacedBy(2.dp),
+                        ) {
+                            Text(
+                                text = stringResource(labelRes),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Text(
+                                text = count.toFormattedCount(),
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }
-
 @Composable
 private fun FullScanCurrentStageCard(
     location: RecoveryScanLocationState?,
@@ -901,6 +950,8 @@ private fun FullScanLocationStatusIcon(status: ScanLocationStatus) {
 @Composable
 private fun FullScanAccessRequiredState(
     onRequestMediaAccess: () -> Unit,
+    canRequestAllFilesAccess: Boolean,
+    onRequestAllFilesAccess: () -> Unit,
     onChooseFolders: () -> Unit,
     hasAuthorizedFolders: Boolean,
     accessSummary: String?,
@@ -939,6 +990,11 @@ private fun FullScanAccessRequiredState(
                 }
                 Button(onClick = onRequestMediaAccess) {
                     Text(text = stringResource(R.string.full_scan_permission_media_action))
+                }
+                if (canRequestAllFilesAccess) {
+                    TextButton(onClick = onRequestAllFilesAccess) {
+                        Text(text = stringResource(R.string.full_scan_all_files_action))
+                    }
                 }
                 TextButton(onClick = onChooseFolders) {
                     Icon(
@@ -1022,15 +1078,16 @@ private fun Context.currentFullDeviceAccessState(): DeviceScanAccessState {
             hasPermission(Manifest.permission.READ_EXTERNAL_STORAGE),
         allFilesAccess = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
             Environment.isExternalStorageManager(),
+        sharedStorageTraversalAccess = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            Environment.isExternalStorageManager()
+        } else {
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.Q && hasPermission(Manifest.permission.READ_EXTERNAL_STORAGE)
+        },
         safFolderCount = contentResolver.persistedUriPermissions.count { permission ->
             permission.isReadPermission
         },
     )
     return DeviceScanAccessState(permissions = permissions)
-    /*
-        summary = labels.joinToString(" • ").ifBlank { null },
-    )
-    */
 }
 
 private fun Context.hasPermission(permission: String): Boolean {

@@ -10,6 +10,7 @@ import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Image
+import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.SmartDisplay
 import androidx.compose.ui.graphics.Color
@@ -22,6 +23,7 @@ import com.nexappra.filerecovery.core.designsystem.theme.LargeFileAccent
 import com.nexappra.filerecovery.core.designsystem.theme.PhotoAccent
 import com.nexappra.filerecovery.core.designsystem.theme.RecycleBinAccent
 import com.nexappra.filerecovery.core.designsystem.theme.ScreenshotAccent
+import com.nexappra.filerecovery.core.designsystem.theme.VaultAccent
 import com.nexappra.filerecovery.core.designsystem.theme.VideoAccent
 import com.nexappra.filerecovery.core.designsystem.theme.WhatsAppAccent
 import com.nexappra.filerecovery.domain.model.RecoveryCategory
@@ -76,6 +78,13 @@ fun RecoveryCategory.toUiSpec(): RecoveryCategoryUiSpec = when (this) {
         detailRes = R.string.category_whatsapp_videos_detail,
         icon = Icons.Rounded.SmartDisplay,
         accentColor = WhatsAppAccent,
+    )
+    RecoveryCategory.HiddenVaults -> RecoveryCategoryUiSpec(
+        titleRes = R.string.category_hidden_vaults,
+        subtitleRes = R.string.category_hidden_vaults_subtitle,
+        detailRes = R.string.category_hidden_vaults_detail,
+        icon = Icons.Rounded.Lock,
+        accentColor = VaultAccent,
     )
     RecoveryCategory.Downloads -> RecoveryCategoryUiSpec(
         titleRes = R.string.category_downloads,

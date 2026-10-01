@@ -14,6 +14,7 @@ data class DeviceScanPermissions(
     val audioAccess: Boolean = false,
     val legacyReadAccess: Boolean = false,
     val allFilesAccess: Boolean = false,
+    val sharedStorageTraversalAccess: Boolean = false,
     val safFolderCount: Int = 0,
 ) {
     val hasFullVisualAccess: Boolean
@@ -23,14 +24,11 @@ data class DeviceScanPermissions(
         get() = hasFullVisualAccess || partialVisualAccess || audioAccess || safFolderCount > 0
 
     val canStartFullDeviceScan: Boolean
-        get() = legacyReadAccess ||
-            allFilesAccess ||
-            safFolderCount > 0 ||
-            (fullImagesAccess && fullVideosAccess && audioAccess)
+        get() = hasAnyDeclaredAccess
 
     val accessLevel: DeviceScanAccessLevel
         get() = when {
-            canStartFullDeviceScan -> DeviceScanAccessLevel.FullAccess
+            sharedStorageTraversalAccess -> DeviceScanAccessLevel.FullAccess
             partialVisualAccess && !hasFullVisualAccess -> DeviceScanAccessLevel.PartialVisualAccess
             hasAnyDeclaredAccess -> DeviceScanAccessLevel.LimitedAccess
             else -> DeviceScanAccessLevel.NoAccess
@@ -38,7 +36,7 @@ data class DeviceScanPermissions(
 
     val summary: String?
         get() = buildList {
-            if (legacyReadAccess) add("Shared storage")
+            if (legacyReadAccess) add("Media access (legacy)")
             if (allFilesAccess) add("All files access")
             if (fullImagesAccess) add("Photos")
             if (fullVideosAccess) add("Videos")

@@ -48,6 +48,15 @@ class FullDeviceScanViewModel @Inject constructor(
     fun onAccessStateChanged(
         accessState: DeviceScanAccessState,
     ) {
+        val gainedSharedStorageTraversal = !_uiState.value.permissions.sharedStorageTraversalAccess &&
+            accessState.permissions.sharedStorageTraversalAccess
+        if (gainedSharedStorageTraversal) {
+            scanStarted = false
+            scanJobId += 1
+            scanJob?.cancel()
+            scanJob = null
+        }
+
         Log.d(
             FILE_RECOVERY_DEBUG_TAG,
             "onAccessStateChanged accessLevel=${accessState.accessLevel} canStartFullDeviceScan=${accessState.canStartFullDeviceScan} summary=${accessState.summary}",
@@ -58,13 +67,26 @@ class FullDeviceScanViewModel @Inject constructor(
                 accessLevel = accessState.accessLevel,
                 accessSummary = accessState.summary,
                 scanStatus = when {
+                    gainedSharedStorageTraversal -> RecoveryScanStatus.Preparing
                     accessState.canStartFullDeviceScan && state.scanStatus == RecoveryScanStatus.AccessRequired ->
                         RecoveryScanStatus.Preparing
                     !accessState.canStartFullDeviceScan && state.scanStatus != RecoveryScanStatus.Completed &&
                         state.scanStatus != RecoveryScanStatus.CompletedEmpty -> RecoveryScanStatus.AccessRequired
                     else -> state.scanStatus
                 },
-                errorMessage = if (accessState.canStartFullDeviceScan) state.errorMessage else null,
+                progress = if (gainedSharedStorageTraversal) null else state.progress,
+                totalItemsScanned = if (gainedSharedStorageTraversal) 0 else state.totalItemsScanned,
+                totalFilesFound = if (gainedSharedStorageTraversal) 0 else state.totalFilesFound,
+                hiddenPhotoCount = if (gainedSharedStorageTraversal) 0 else state.hiddenPhotoCount,
+                hiddenVideoCount = if (gainedSharedStorageTraversal) 0 else state.hiddenVideoCount,
+                totalBytesScanned = if (gainedSharedStorageTraversal) 0L else state.totalBytesScanned,
+                locationsChecked = if (gainedSharedStorageTraversal) 0 else state.locationsChecked,
+                estimatedRemainingMillis = if (gainedSharedStorageTraversal) null else state.estimatedRemainingMillis,
+                currentLocation = if (gainedSharedStorageTraversal) null else state.currentLocation,
+                locations = if (gainedSharedStorageTraversal) defaultRecoveryLocationStates() else state.locations,
+                categoryCounts = if (gainedSharedStorageTraversal) emptyRecoveryCategoryCounts() else state.categoryCounts,
+                elapsedMillis = if (gainedSharedStorageTraversal) 0L else state.elapsedMillis,
+                errorMessage = null,
             )
         }
 
@@ -72,7 +94,6 @@ class FullDeviceScanViewModel @Inject constructor(
             startScanIfNeeded()
         }
     }
-
     fun retryScan() {
         scanStarted = false
         _uiState.update { state ->
@@ -85,6 +106,8 @@ class FullDeviceScanViewModel @Inject constructor(
                 progress = null,
                 totalItemsScanned = 0,
                 totalFilesFound = 0,
+                hiddenPhotoCount = 0,
+                hiddenVideoCount = 0,
                 totalBytesScanned = 0L,
                 locationsChecked = 0,
                 estimatedRemainingMillis = null,
@@ -184,6 +207,8 @@ class FullDeviceScanViewModel @Inject constructor(
                 progress = snapshot.progress,
                 totalItemsScanned = snapshot.totalItemsScanned,
                 totalFilesFound = snapshot.totalFilesFound,
+                hiddenPhotoCount = snapshot.hiddenPhotoCount,
+                hiddenVideoCount = snapshot.hiddenVideoCount,
                 totalBytesScanned = snapshot.totalBytesScanned,
                 locationsChecked = snapshot.locationsChecked,
                 estimatedRemainingMillis = snapshot.estimatedRemainingMillis,

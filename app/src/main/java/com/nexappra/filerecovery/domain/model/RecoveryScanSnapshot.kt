@@ -7,6 +7,8 @@ data class RecoveryScanSnapshot(
     val progress: Float?,
     val totalItemsScanned: Int,
     val totalFilesFound: Int,
+    val hiddenPhotoCount: Int = 0,
+    val hiddenVideoCount: Int = 0,
     val totalBytesScanned: Long,
     val estimatedRemainingMillis: Long?,
     val currentLocation: RecoveryScanLocationState?,

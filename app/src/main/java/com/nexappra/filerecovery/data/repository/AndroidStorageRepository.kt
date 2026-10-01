@@ -1,6 +1,9 @@
 package com.nexappra.filerecovery.data.repository
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Environment
 import android.os.StatFs
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -27,8 +30,12 @@ class AndroidStorageRepository @Inject constructor(
     }
 
     /**
-     * File APIs are used only when Android grants broad shared-storage access. On scoped-storage
-     * devices the recovery repository falls back to user-authorized SAF trees.
+     * Traverses shared storage recursively including root files, hidden folders (.nomedia, vaults,
+     * status savers, app trash, and hidden directories).
+     */
+    /**
+     * Traverses shared storage, including hidden folders and folders excluded from MediaStore with
+     * a .nomedia marker. Android private app-specific folders remain outside this scan.
      */
     suspend fun scanAccessibleSharedStorage(
         includePath: (String) -> Boolean,
@@ -36,38 +43,50 @@ class AndroidStorageRepository @Inject constructor(
     ) = withContext(Dispatchers.IO) {
         if (!canTraverseSharedStorage()) return@withContext
         val root = Environment.getExternalStorageDirectory()
-        val rootPath = root.canonicalPath
-        val roots = root.listFiles()
-            .orEmpty()
-            .filter { file -> file.isDirectory && !file.isRestrictedSharedDirectory(rootPath) }
+        val rootPath = runCatching { root.canonicalPath }.getOrNull() ?: return@withContext
+        val rootPrefix = rootPath.trimEnd(File.separatorChar) + File.separator
+        val visitedDirectories = HashSet<String>()
 
         suspend fun walk(directory: File, hiddenAncestor: Boolean, noMediaAncestor: Boolean) {
             coroutineContext.ensureActive()
+            val canonicalDirectory = runCatching { directory.canonicalPath }.getOrNull() ?: return
+            if (canonicalDirectory != rootPath && !canonicalDirectory.startsWith(rootPrefix)) return
+            if (!visitedDirectories.add(canonicalDirectory)) return
             val children = runCatching { directory.listFiles().orEmpty() }.getOrDefault(emptyArray())
-            val hasNoMedia = noMediaAncestor || children.any { child -> child.name == ".nomedia" }
+            val hasNoMedia = noMediaAncestor || children.any { child ->
+                child.name.equals(".nomedia", ignoreCase = true)
+            }
             children.forEach { child ->
                 coroutineContext.ensureActive()
                 val canonical = runCatching { child.canonicalPath }.getOrNull() ?: return@forEach
-                if (!canonical.startsWith(rootPath)) return@forEach
+                if (canonical != rootPath && !canonical.startsWith(rootPrefix)) return@forEach
                 if (child.isDirectory && child.isRestrictedSharedDirectory(rootPath)) return@forEach
-                val relativePath = canonical.removePrefix(rootPath).trimStart(File.separatorChar).replace('\\', '/')
+                val relativePath = canonical.removePrefix(rootPath)
+                    .trimStart(File.separatorChar)
+                    .replace('\\', '/')
+                val isHidden = child.name.startsWith(".") ||
+                    child.name.contains("vault", ignoreCase = true) ||
+                    child.name.contains("trash", ignoreCase = true) ||
+                    child.name.contains("statuses", ignoreCase = true) ||
+                    child.name.contains("private", ignoreCase = true)
                 if (child.isDirectory) {
-                    walk(child, hiddenAncestor || child.name.startsWith("."), hasNoMedia)
-                } else if (child.isFile && child.name != ".nomedia" && includePath(relativePath)) {
-                    onFile(AccessibleStorageFile(child, relativePath, hiddenAncestor || child.name.startsWith("."), hasNoMedia))
+                    walk(child, hiddenAncestor || isHidden, hasNoMedia)
+                } else if (child.isFile && !child.name.equals(".nomedia", ignoreCase = true) && includePath(relativePath)) {
+                    onFile(AccessibleStorageFile(child, relativePath, hiddenAncestor || isHidden, hasNoMedia))
                 }
             }
         }
-        roots.forEach { rootDirectory -> walk(rootDirectory, rootDirectory.name.startsWith("."), false) }
+
+        walk(root, root.name.startsWith("."), false)
     }
-
     private fun canTraverseSharedStorage(): Boolean =
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             Environment.isExternalStorageManager()
+        } else if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            context.checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
         } else {
-            context.checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            false
         }
-
     private fun File.isRestrictedSharedDirectory(rootPath: String): Boolean {
         val relativePath = runCatching { canonicalPath.removePrefix(rootPath) }.getOrDefault("")
             .trimStart(File.separatorChar)
