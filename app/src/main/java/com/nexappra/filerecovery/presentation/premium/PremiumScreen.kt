@@ -1,421 +1,97 @@
 package com.nexappra.filerecovery.presentation.premium
 
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
+import androidx.compose.material.icons.rounded.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.nexappra.filerecovery.BuildConfig
+import com.nexappra.filerecovery.core.ui.components.*
 
 @Composable
-fun PremiumRoute(
-    onClose: () -> Unit,
-    onContinueWithFree: () -> Unit,
-    onContinueWithPremium: (PremiumPlan) -> Unit,
-    viewModel: PremiumViewModel = hiltViewModel(),
-) {
-    val uiState by viewModel.uiState.collectAsState()
-
-    PremiumScreen(
-        selectedPlan = uiState.selectedPlan,
-        onPlanSelected = viewModel::selectPlan,
-        onClose = onClose,
-        onContinueWithFree = onContinueWithFree,
-        onContinueWithPremium = { onContinueWithPremium(uiState.selectedPlan) },
-    )
-}
-
-@Composable
-fun PremiumScreen(
-    selectedPlan: PremiumPlan,
-    onPlanSelected: (PremiumPlan) -> Unit,
-    onClose: () -> Unit,
-    onContinueWithFree: () -> Unit,
-    onContinueWithPremium: () -> Unit,
-) {
-    var showCheckoutMessage by remember { mutableStateOf(false) }
-    val scrollState = rememberScrollState()
-
-    if (showCheckoutMessage) {
-        AlertDialog(
-            onDismissRequest = { showCheckoutMessage = false },
-            title = { Text("Premium is coming soon") },
-            text = {
-                Text("Pricing and checkout are not connected yet. You can keep using File Recovery for free.")
-            },
-            confirmButton = {
-                TextButton(onClick = { showCheckoutMessage = false }) {
-                    Text("Got it")
+fun PremiumRoute(onClose: () -> Unit, viewModel: PremiumViewModel = hiltViewModel()) {
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    var selected by rememberSaveable { mutableStateOf<String?>(null) }
+    val chosen = state.offers.firstOrNull { it.productId == selected } ?: state.offers.firstOrNull()
+    val active = state.access.isActive()
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+        item { FlowHeader("Recovery Plus", "MORE WAYS TO SAVE WHAT MATTERS", onBack = onClose) }
+        item {
+            Column(Modifier.fillMaxWidth().recoveryHero().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Icon(Icons.Rounded.AutoAwesome, null, tint = RecoveryMint)
+                Text(if (active) "Your memories.\nMore possibilities." else "Found something\nworth keeping?", style = MaterialTheme.typography.headlineLarge, color = Color.White)
+                Text("Free scans help you explore. Plus helps you save, preview and export.", color = Color.White.copy(alpha = .8f))
+                if (active) AssistChip(onClick = {}, label = { Text("Premium active", color = RecoveryMint) })
+            }
+        }
+        item {
+            FlowPanel {
+                FeatureLine(Icons.Rounded.HighQuality, "Unlimited original files", "Copy all readable photos and videos in their existing quality.")
+                FeatureLine(Icons.Rounded.ManageSearch, "Deeper folder search", "Search folders you choose, including accessible hidden and cached media.")
+                FeatureLine(Icons.Rounded.ZoomIn, "Detailed previews", "Zoom into photos and play videos before saving.")
+                FeatureLine(Icons.Rounded.AutoFixHigh, "Repair a readable photo", "Create a fresh PNG from decodable pixels, up to 2048 px.")
+                FeatureLine(Icons.Rounded.CloudUpload, "Cloud export", "Save an original-file ZIP to Drive or another installed file provider.")
+            }
+        }
+        if (active) {
+            item { Button(onClick = onClose, modifier = Modifier.fillMaxWidth()) { Text("Continue with Plus") } }
+            item {
+                OutlinedButton(onClick = {
+                    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/account/subscriptions?package=" + BuildConfig.APPLICATION_ID))) }
+                }, modifier = Modifier.fillMaxWidth()) { Text("Manage subscription in Google Play") }
+            }
+        } else {
+            items(state.offers, key = { it.productId }) { offer ->
+                val isSelected = chosen?.productId == offer.productId
+                Card(onClick = { selected = offer.productId }, shape = RoundedCornerShape(20.dp),
+                    border = BorderStroke(if (isSelected) 2.dp else 1.dp, if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                    Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Column { Text(offer.title, style = MaterialTheme.typography.titleMedium); Text(if (offer.billingPeriod == "P1Y") "Billed every year" else "Billed every month", style = MaterialTheme.typography.bodySmall) }
+                        Text(offer.price, style = MaterialTheme.typography.titleLarge)
+                    }
                 }
-            },
-        )
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .navigationBarsPadding(),
-    ) {
-        PremiumTopBar(onClose = onClose)
-
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(scrollState)
-                .padding(horizontal = 24.dp)
-                .padding(top = 12.dp, bottom = 20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            PremiumHero()
-            Spacer(Modifier.height(24.dp))
-            PremiumFeaturePreview()
-            Spacer(Modifier.height(24.dp))
-            PremiumPlans(
-                selectedPlan = selectedPlan,
-                onPlanSelected = onPlanSelected,
-            )
-            Spacer(Modifier.height(10.dp))
-            Text(
-                text = "Plans and pricing will appear here when checkout is ready.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
-            Spacer(Modifier.height(20.dp))
-            Button(
-                onClick = {
-                    showCheckoutMessage = true
-                    onContinueWithPremium()
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(54.dp),
-                shape = RoundedCornerShape(18.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                ),
-            ) {
-                Text(
-                    text = "Preview Premium",
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 15.sp,
-                )
             }
-            TextButton(
-                onClick = onContinueWithFree,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(
-                    text = "Continue with Free",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            item {
+                Button(onClick = { val activity = context.findActivity(); if (activity != null && chosen != null) viewModel.purchase(activity, chosen.productId) },
+                    enabled = state.configured && chosen != null && !state.isLoading, modifier = Modifier.fillMaxWidth().height(54.dp)) {
+                    Text(if (state.isLoading) "Checking Google Play…" else if (!state.configured || chosen == null) "Plans currently unavailable" else "Subscribe with Google Play")
+                }
+            }
+            if (state.offers.isNotEmpty()) item {
+                Text("Subscription renews automatically at the price shown for the selected period unless cancelled in Google Play. Cancel any time; access continues until the paid period ends.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-    }
-}
-
-@Composable
-private fun PremiumTopBar(onClose: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(58.dp)
-            .padding(horizontal = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Text(
-            text = "FILE RECOVERY",
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            letterSpacing = 1.4.sp,
-        )
-        IconButton(onClick = onClose) {
-            Icon(
-                imageVector = Icons.Default.Close,
-                contentDescription = "Close premium screen",
-                tint = MaterialTheme.colorScheme.onSurface,
-            )
-        }
-    }
-}
-
-@Composable
-private fun PremiumHero() {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        PremiumOrbitMark()
-        Spacer(Modifier.height(18.dp))
-        Surface(
-            shape = CircleShape,
-            color = MaterialTheme.colorScheme.secondaryContainer,
-        ) {
-            Text(
-                text = "PREMIUM PREVIEW",
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                letterSpacing = 1.sp,
-            )
-        }
-        Spacer(Modifier.height(12.dp))
-        Text(
-            text = "A little more power\nfor every recovery.",
-            style = MaterialTheme.typography.headlineSmall,
-            color = MaterialTheme.colorScheme.onBackground,
-            fontWeight = FontWeight.Bold,
-            textAlign = TextAlign.Center,
-            lineHeight = 31.sp,
-        )
-        Spacer(Modifier.height(8.dp))
-        Text(
-            text = "A calm, focused upgrade for your file recovery workflow.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-        )
-    }
-}
-
-@Composable
-private fun PremiumOrbitMark() {
-    val transition = rememberInfiniteTransition(label = "premiumOrbit")
-    val rotation by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 14000, easing = LinearEasing),
-        ),
-        label = "premiumOrbitRotation",
-    )
-    val pulse by transition.animateFloat(
-        initialValue = 0.96f,
-        targetValue = 1.04f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 2100, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "premiumOrbitPulse",
-    )
-    val accent = MaterialTheme.colorScheme.tertiary
-
-    Box(
-        modifier = Modifier.size(122.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Surface(
-            modifier = Modifier
-                .size(108.dp)
-                .scale(pulse),
-            shape = CircleShape,
-            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.38f),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
-        ) {}
-        Surface(
-            modifier = Modifier.size(78.dp),
-            shape = CircleShape,
-            color = MaterialTheme.colorScheme.primaryContainer,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)),
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Text(
-                    text = "✦",
-                    color = MaterialTheme.colorScheme.primary,
-                    fontSize = 34.sp,
-                    fontWeight = FontWeight.Bold,
-                )
+        state.message?.let { message -> item { Text(message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) } }
+        item {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                TextButton(onClick = viewModel::restore, enabled = !state.isLoading) { Text("Restore purchases") }
+                TextButton(onClick = onClose) { Text("Keep scanning") }
             }
-        }
-        Box(
-            modifier = Modifier
-                .size(106.dp)
-                .rotate(rotation),
-            contentAlignment = Alignment.TopCenter,
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(10.dp)
-                    .background(accent, CircleShape),
-            )
+            Text("Recovery depends on what Android still allows you to read. Deep scan cannot access erased sectors or other apps’ private storage. Repair cannot recreate missing image data or undo severe blur.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
 
-@Composable
-private fun PremiumFeaturePreview() {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Text(
-            text = "MADE FOR YOUR NEXT FIND",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            letterSpacing = 1.sp,
-        )
-        PremiumFeatureCard("01", "Focused scan controls", "More ways to narrow a recovery scan.")
-        PremiumFeatureCard("02", "Helpful file filters", "Find a result with fewer steps.")
-        PremiumFeatureCard("03", "A quieter experience", "A cleaner space to review your files.")
-    }
-}
-
-@Composable
-private fun PremiumFeatureCard(number: String, title: String, detail: String) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.75f)),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 13.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(13.dp),
-        ) {
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.primaryContainer,
-            ) {
-                Text(
-                    text = number,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold,
-                )
-            }
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    text = detail,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun PremiumPlans(
-    selectedPlan: PremiumPlan,
-    onPlanSelected: (PremiumPlan) -> Unit,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        PremiumPlanCard(
-            title = "Monthly",
-            detail = "Flexible plan",
-            selected = selectedPlan == PremiumPlan.MONTHLY,
-            onClick = { onPlanSelected(PremiumPlan.MONTHLY) },
-            modifier = Modifier.weight(1f),
-        )
-        PremiumPlanCard(
-            title = "Yearly",
-            detail = "One plan for the year",
-            selected = selectedPlan == PremiumPlan.YEARLY,
-            onClick = { onPlanSelected(PremiumPlan.YEARLY) },
-            modifier = Modifier.weight(1f),
-        )
-    }
-}
-
-@Composable
-private fun PremiumPlanCard(
-    title: String,
-    detail: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Surface(
-        modifier = modifier
-            .height(88.dp)
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(17.dp),
-        color = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
-        else MaterialTheme.colorScheme.surface,
-        border = BorderStroke(
-            width = if (selected) 1.5.dp else 1.dp,
-            color = if (selected) MaterialTheme.colorScheme.primary
-            else MaterialTheme.colorScheme.outlineVariant,
-        ),
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.Center,
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurface,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Spacer(Modifier.height(3.dp))
-            Text(
-                text = detail,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }

@@ -1,25 +1,17 @@
 package com.nexappra.filerecovery.presentation.scan
 
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import android.util.Log
-import com.nexappra.filerecovery.core.utils.FILE_RECOVERY_DEBUG_TAG
-import com.nexappra.filerecovery.domain.model.RecoveryScanSnapshot
-import com.nexappra.filerecovery.domain.model.RecoveryScanStatus
-import com.nexappra.filerecovery.domain.model.RecoveryCategory
-import com.nexappra.filerecovery.domain.usecase.PerformRecoveryScanUseCase
+import com.nexappra.filerecovery.domain.model.*
+import com.nexappra.filerecovery.domain.repository.PremiumRepository
+import com.nexappra.filerecovery.domain.repository.RecoveryScanRepository
 import com.nexappra.filerecovery.presentation.navigation.AppDestination
 import dagger.hilt.android.lifecycle.HiltViewModel
-import javax.inject.Inject
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Job
+import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.receiveAsFlow
-import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.*
+import javax.inject.Inject
 
 sealed interface FullDeviceScanNavigationEvent {
     data class OpenResults(val sessionId: String) : FullDeviceScanNavigationEvent
@@ -28,196 +20,73 @@ sealed interface FullDeviceScanNavigationEvent {
 
 @HiltViewModel
 class FullDeviceScanViewModel @Inject constructor(
-    private val performRecoveryScanUseCase: PerformRecoveryScanUseCase,
+    private val repository: RecoveryScanRepository,
+    private val premium: PremiumRepository,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
-
-    private val selectedCategory = savedStateHandle.get<String>(AppDestination.FullDeviceScan.ArgCategory)
-        ?.let { name -> RecoveryCategory.entries.firstOrNull { it.name == name } }
-
-    private val _uiState = MutableStateFlow(FullDeviceScanUiState(selectedCategory = selectedCategory))
-    val uiState = _uiState.asStateFlow()
-
-    private val navigationEvents = Channel<FullDeviceScanNavigationEvent>(Channel.BUFFERED)
-    val events = navigationEvents.receiveAsFlow()
-
-    private var scanStarted = false
-    private var scanJobId = 0
+    private val category = savedStateHandle.get<String>(AppDestination.FullDeviceScan.ArgCategory)
+        ?.let { name -> listOf(RecoveryCategory.Photos, RecoveryCategory.Videos).firstOrNull { it.name == name } }
+    private val mode = if (savedStateHandle.get<String>(AppDestination.FullDeviceScan.ArgMode) == "Deep") RecoveryScanMode.Deep else RecoveryScanMode.Quick
+    private val mutableState = MutableStateFlow(FullDeviceScanUiState(selectedCategory = category, mode = mode))
+    val uiState = mutableState.asStateFlow()
+    private val navigation = Channel<FullDeviceScanNavigationEvent>(Channel.BUFFERED)
+    val events = navigation.receiveAsFlow()
     private var scanJob: Job? = null
+    private var started = false
 
-    fun onAccessStateChanged(
-        accessState: DeviceScanAccessState,
-    ) {
-        val gainedSharedStorageTraversal = !_uiState.value.permissions.sharedStorageTraversalAccess &&
-            accessState.permissions.sharedStorageTraversalAccess
-        if (gainedSharedStorageTraversal) {
-            scanStarted = false
-            scanJobId += 1
-            scanJob?.cancel()
-            scanJob = null
-        }
-
-        Log.d(
-            FILE_RECOVERY_DEBUG_TAG,
-            "onAccessStateChanged accessLevel=${accessState.accessLevel} canStartFullDeviceScan=${accessState.canStartFullDeviceScan} summary=${accessState.summary}",
-        )
-        _uiState.update { state ->
-            state.copy(
-                permissions = accessState.permissions,
-                accessLevel = accessState.accessLevel,
-                accessSummary = accessState.summary,
-                scanStatus = when {
-                    gainedSharedStorageTraversal -> RecoveryScanStatus.Preparing
-                    accessState.canStartFullDeviceScan && state.scanStatus == RecoveryScanStatus.AccessRequired ->
-                        RecoveryScanStatus.Preparing
-                    !accessState.canStartFullDeviceScan && state.scanStatus != RecoveryScanStatus.Completed &&
-                        state.scanStatus != RecoveryScanStatus.CompletedEmpty -> RecoveryScanStatus.AccessRequired
-                    else -> state.scanStatus
-                },
-                progress = if (gainedSharedStorageTraversal) null else state.progress,
-                totalItemsScanned = if (gainedSharedStorageTraversal) 0 else state.totalItemsScanned,
-                totalFilesFound = if (gainedSharedStorageTraversal) 0 else state.totalFilesFound,
-                hiddenPhotoCount = if (gainedSharedStorageTraversal) 0 else state.hiddenPhotoCount,
-                hiddenVideoCount = if (gainedSharedStorageTraversal) 0 else state.hiddenVideoCount,
-                totalBytesScanned = if (gainedSharedStorageTraversal) 0L else state.totalBytesScanned,
-                locationsChecked = if (gainedSharedStorageTraversal) 0 else state.locationsChecked,
-                estimatedRemainingMillis = if (gainedSharedStorageTraversal) null else state.estimatedRemainingMillis,
-                currentLocation = if (gainedSharedStorageTraversal) null else state.currentLocation,
-                locations = if (gainedSharedStorageTraversal) defaultRecoveryLocationStates() else state.locations,
-                categoryCounts = if (gainedSharedStorageTraversal) emptyRecoveryCategoryCounts() else state.categoryCounts,
-                elapsedMillis = if (gainedSharedStorageTraversal) 0L else state.elapsedMillis,
-                errorMessage = null,
-            )
-        }
-
-        if (accessState.canStartFullDeviceScan) {
-            startScanIfNeeded()
-        }
-    }
-    fun retryScan() {
-        scanStarted = false
-        _uiState.update { state ->
-            state.copy(
-                scanStatus = if (state.canStartFullDeviceScan) {
-                    RecoveryScanStatus.Preparing
-                } else {
-                    RecoveryScanStatus.AccessRequired
-                },
-                progress = null,
-                totalItemsScanned = 0,
-                totalFilesFound = 0,
-                hiddenPhotoCount = 0,
-                hiddenVideoCount = 0,
-                totalBytesScanned = 0L,
-                locationsChecked = 0,
-                estimatedRemainingMillis = null,
-                currentLocation = null,
-                locations = defaultRecoveryLocationStates(),
-                categoryCounts = emptyRecoveryCategoryCounts(),
-                elapsedMillis = 0L,
-                errorMessage = null,
-            )
-        }
-        startScanIfNeeded()
+    init {
+        viewModelScope.launch { premium.state.collect { state -> mutableState.update { it.copy(isPremium = state.access.isActive()) } } }
     }
 
-    fun stopScan() {
-        scanStarted = false
-        scanJobId += 1
-        scanJob?.cancel()
-        scanJob = null
-        _uiState.update { state -> state.copy(scanStatus = RecoveryScanStatus.Cancelled) }
-        viewModelScope.launch {
-            navigationEvents.send(FullDeviceScanNavigationEvent.Close)
-        }
+    fun onAccessStateChanged(access: DeviceScanAccessState) {
+        mutableState.update { it.copy(permissions = access.permissions, accessLevel = access.accessLevel, accessSummary = access.summary) }
+        if (!started && mode == RecoveryScanMode.Quick) startScan()
     }
 
-    private fun startScanIfNeeded() {
-        if (!_uiState.value.canStartFullDeviceScan || scanStarted) return
+    private fun hasAccess(): Boolean = with(uiState.value.permissions) {
+        legacyReadAccess || allFilesAccess || partialVisualAccess ||
+            (category != RecoveryCategory.Videos && fullImagesAccess) ||
+            (category != RecoveryCategory.Photos && fullVideosAccess) ||
+            (mode == RecoveryScanMode.Deep && safFolderCount > 0)
+    }
 
-        scanStarted = true
-        val currentJobId = ++scanJobId
-        Log.d(
-            FILE_RECOVERY_DEBUG_TAG,
-            "Starting full device scan jobId=$currentJobId",
-        )
+    fun startScan() {
+        if (scanJob?.isActive == true || started || uiState.value.isStopping) return
+        if (mode == RecoveryScanMode.Deep && !premium.state.value.access.isActive()) return
+        if (!hasAccess()) { mutableState.update { it.copy(scanStatus = RecoveryScanStatus.AccessRequired) }; return }
+        started = true
+        mutableState.update { it.copy(scanStatus = RecoveryScanStatus.Preparing, errorMessage = null) }
         scanJob = viewModelScope.launch {
             try {
-                val session = performRecoveryScanUseCase(selectedCategory) { snapshot ->
-                    if (currentJobId == scanJobId) {
-                        applySnapshot(snapshot)
-                    }
+                val session = repository.performFullDeviceScan(category, mode) { snapshot ->
+                    mutableState.update { it.copy(scanStatus = snapshot.status, sessionId = snapshot.sessionId,
+                        previewFiles = snapshot.previewFiles, totalItemsScanned = snapshot.totalItemsScanned,
+                        totalFilesFound = snapshot.totalFilesFound, totalBytesScanned = snapshot.totalBytesScanned,
+                        elapsedMillis = snapshot.elapsedMillis, progress = snapshot.progress,
+                        currentLocation = snapshot.currentLocation, locations = snapshot.locations,
+                        categoryCounts = snapshot.categoryCounts) }
                 }
-                if (currentJobId == scanJobId) {
-                    Log.d(
-                        FILE_RECOVERY_DEBUG_TAG,
-                        "Scan completed session=${session.id} resultCount=${session.files.size}",
-                    )
-                    navigationEvents.send(FullDeviceScanNavigationEvent.OpenResults(session.id))
-                }
-            } catch (error: CancellationException) {
-                if (currentJobId == scanJobId) {
-                    _uiState.update { state -> state.copy(scanStatus = RecoveryScanStatus.Cancelled) }
-                }
-            } catch (error: SecurityException) {
-                Log.e(
-                    FILE_RECOVERY_DEBUG_TAG,
-                    "Full device scan blocked by SecurityException",
-                    error,
-                )
-                scanStarted = false
-                _uiState.update { state ->
-                    state.copy(
-                        scanStatus = RecoveryScanStatus.AccessRequired,
-                        errorMessage = null,
-                    )
-                }
-            } catch (error: Throwable) {
-                Log.e(
-                    FILE_RECOVERY_DEBUG_TAG,
-                    "Full device scan failed",
-                    error,
-                )
-                scanStarted = false
-                _uiState.update { state ->
-                    state.copy(
-                        scanStatus = RecoveryScanStatus.Error,
-                        errorMessage = error.message,
-                    )
-                }
-            } finally {
-                if (currentJobId == scanJobId) {
-                    scanJob = null
-                }
+                navigation.send(FullDeviceScanNavigationEvent.OpenResults(session.id))
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) {
+                started = false
+                mutableState.update { it.copy(scanStatus = RecoveryScanStatus.Error, errorMessage = error.message ?: "Unable to read this storage. Please try again.") }
             }
         }
     }
 
-    private fun applySnapshot(snapshot: RecoveryScanSnapshot) {
-        if (snapshot.totalFilesFound == 0 || snapshot.status == RecoveryScanStatus.Completed || snapshot.status == RecoveryScanStatus.CompletedEmpty) {
-            Log.d(
-                FILE_RECOVERY_DEBUG_TAG,
-                "Snapshot status=${snapshot.status} totalFiles=${snapshot.totalFilesFound} locationsChecked=${snapshot.locationsChecked}",
-            )
-        }
-        _uiState.update { state ->
-            state.copy(
-                scanStatus = snapshot.status,
-                selectedCategory = snapshot.selectedCategory,
-                progress = snapshot.progress,
-                totalItemsScanned = snapshot.totalItemsScanned,
-                totalFilesFound = snapshot.totalFilesFound,
-                hiddenPhotoCount = snapshot.hiddenPhotoCount,
-                hiddenVideoCount = snapshot.hiddenVideoCount,
-                totalBytesScanned = snapshot.totalBytesScanned,
-                locationsChecked = snapshot.locationsChecked,
-                estimatedRemainingMillis = snapshot.estimatedRemainingMillis,
-                currentLocation = snapshot.currentLocation,
-                locations = snapshot.locations,
-                categoryCounts = snapshot.categoryCounts,
-                elapsedMillis = snapshot.elapsedMillis,
-                errorMessage = snapshot.errorMessage,
-            )
+    fun retryScan() { if (scanJob?.isActive != true) { started = false; startScan() } }
+
+    fun finishEarly(showResults: Boolean = true) {
+        if (uiState.value.isStopping) return
+        mutableState.update { it.copy(isStopping = true) }
+        viewModelScope.launch {
+            scanJob?.cancelAndJoin()
+            val id = uiState.value.sessionId
+            if (showResults && id.isNotBlank() && repository.getSession(id) != null) navigation.send(FullDeviceScanNavigationEvent.OpenResults(id))
+            else navigation.send(FullDeviceScanNavigationEvent.Close)
         }
     }
+
+    fun stopScan() = finishEarly(false)
 }

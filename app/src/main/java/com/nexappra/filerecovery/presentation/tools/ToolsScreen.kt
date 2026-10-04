@@ -1,51 +1,30 @@
 package com.nexappra.filerecovery.presentation.tools
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Build
-import androidx.compose.material.icons.rounded.Folder
-import androidx.compose.material.icons.rounded.Storage
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import androidx.compose.material.icons.rounded.*
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import com.nexappra.filerecovery.R
-import com.nexappra.filerecovery.core.ui.components.MessageCard
+import com.nexappra.filerecovery.core.ui.components.*
 
 @Composable
-fun ToolsScreen(
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(horizontal = 24.dp, vertical = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        Text(
-            text = stringResource(R.string.tools_title),
-            style = MaterialTheme.typography.headlineSmall,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-        MessageCard(
-            title = stringResource(R.string.tools_large_file_finder),
-            description = stringResource(R.string.tools_large_file_finder_description),
-            icon = Icons.Rounded.Folder,
-        )
-        MessageCard(
-            title = stringResource(R.string.tools_storage_analyzer),
-            description = stringResource(R.string.tools_storage_analyzer_description),
-            icon = Icons.Rounded.Storage,
-        )
-        MessageCard(
-            title = stringResource(R.string.tools_reliable_only),
-            description = stringResource(R.string.tools_reliable_only_description),
-            icon = Icons.Rounded.Build,
-        )
+fun ToolsScreen(onDeepScan: () -> Unit = {}, onScan: () -> Unit = {}, modifier: Modifier = Modifier) {
+    LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        item { FlowHeader("A little extra care", "RECOVERY TOOLS") }
+        item { FlowPanel {
+            FeatureLine(Icons.Rounded.ManageSearch, "Look a little deeper", "Choose an accessible folder and search for photos, videos and readable cache copies. Premium required.")
+            Button(onClick = onDeepScan) { Text("Open deep scan") }
+        } }
+        item { FlowPanel {
+            FeatureLine(Icons.Rounded.AutoFixHigh, "Give a photo a fresh copy", "Scan, select one photo, then choose Repair copy. Re-encodes readable pixels to PNG; missing data cannot be reconstructed.")
+            OutlinedButton(onClick = onScan) { Text("Find a photo to repair") }
+        } }
+        item { FlowPanel {
+            FeatureLine(Icons.Rounded.CloudUpload, "Keep a copy elsewhere", "Select files from scan results, then Cloud export. Choose Google Drive or another provider in the system picker.")
+            OutlinedButton(onClick = onScan) { Text("Choose files to export") }
+        } }
     }
 }

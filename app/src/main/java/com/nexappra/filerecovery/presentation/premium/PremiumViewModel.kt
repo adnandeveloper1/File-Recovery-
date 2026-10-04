@@ -1,35 +1,15 @@
 package com.nexappra.filerecovery.presentation.premium
 
+import android.app.Activity
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
-import com.nexappra.filerecovery.domain.repository.SettingsRepository
+import com.nexappra.filerecovery.data.billing.PlayBillingRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
 
 @HiltViewModel
-class PremiumViewModel @Inject constructor(
-    private val settingsRepository: SettingsRepository,
-) : ViewModel() {
-
-    private val _uiState = MutableStateFlow(PremiumUiState())
-    val uiState: StateFlow<PremiumUiState> = _uiState.asStateFlow()
-
-    init {
-        viewModelScope.launch {
-            settingsRepository.isPremium.collect { isPremium ->
-                _uiState.value = _uiState.value.copy(isPremium = isPremium)
-            }
-        }
-    }
-
-    fun selectPlan(plan: PremiumPlan) {
-        _uiState.value = _uiState.value.copy(
-            selectedPlan = plan
-        )
-    }
-
+class PremiumViewModel @Inject constructor(private val billing: PlayBillingRepository) : ViewModel() {
+    val state = billing.state
+    init { billing.refresh() }
+    fun restore() = billing.refresh()
+    fun purchase(activity: Activity, productId: String) = billing.purchase(activity, productId)
 }

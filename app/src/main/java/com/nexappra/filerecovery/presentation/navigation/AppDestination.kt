@@ -19,16 +19,13 @@ sealed class AppDestination(
 
     object Scan : AppDestination("scan")
 
-    object FullDeviceScan : AppDestination("full-device-scan?category={category}") {
+    object FullDeviceScan : AppDestination("full-device-scan?category={category}&mode={mode}") {
 
         const val ArgCategory = "category"
+        const val ArgMode = "mode"
 
-        fun createRoute(category: RecoveryCategory? = null): String {
-            return if (category == null) {
-                "full-device-scan"
-            } else {
-                "full-device-scan?category=${category.name}"
-            }
+        fun createRoute(category: RecoveryCategory? = null, mode: com.nexappra.filerecovery.domain.model.RecoveryScanMode = com.nexappra.filerecovery.domain.model.RecoveryScanMode.Quick): String {
+            return "full-device-scan?mode=${mode.name}" + (category?.let { "&category=${it.name}" } ?: "")
         }
     }
 

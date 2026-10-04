@@ -20,6 +20,12 @@ import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+    @javax.inject.Inject lateinit var billing: com.nexappra.filerecovery.data.billing.PlayBillingRepository
+
+    override fun onResume() {
+        super.onResume()
+        billing.refresh()
+    }
 
     override fun onCreate(
         savedInstanceState: Bundle?,

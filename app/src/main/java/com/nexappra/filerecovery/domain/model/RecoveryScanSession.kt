@@ -9,4 +9,6 @@ data class RecoveryScanSession(
     val files: List<RecoverableFile>,
     val locations: List<RecoveryScanLocationState>,
     val completedAtMillis: Long,
+    val isPartial: Boolean = false,
+    val warnings: List<String> = emptyList(),
 )

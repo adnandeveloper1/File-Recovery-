@@ -4,6 +4,11 @@ import com.nexappra.filerecovery.domain.model.RecoverableFile
 import com.nexappra.filerecovery.domain.model.RecoveryResultFilter
 
 data class FullRecoveryResultsUiState(
+    val isPremium: Boolean = false,
+    val isRecovering: Boolean = false,
+    val isPartial: Boolean = false,
+    val warnings: List<String> = emptyList(),
+    val selectedCategory: com.nexappra.filerecovery.domain.model.RecoveryCategory? = null,
     val isLoading: Boolean = true,
     val errorMessage: String? = null,
     val hasMissingSession: Boolean = false,

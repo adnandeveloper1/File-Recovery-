@@ -7,6 +7,11 @@ import com.nexappra.filerecovery.domain.model.RecoveryScanStatus
 import com.nexappra.filerecovery.domain.model.RecoveryCategory
 
 data class FullDeviceScanUiState(
+    val mode: com.nexappra.filerecovery.domain.model.RecoveryScanMode = com.nexappra.filerecovery.domain.model.RecoveryScanMode.Quick,
+    val sessionId: String = "",
+    val previewFiles: List<com.nexappra.filerecovery.domain.model.RecoverableFile> = emptyList(),
+    val isStopping: Boolean = false,
+    val isPremium: Boolean = false,
     val selectedCategory: RecoveryCategory? = null,
     val scanStatus: RecoveryScanStatus = RecoveryScanStatus.AccessRequired,
     val permissions: DeviceScanPermissions = DeviceScanPermissions(),

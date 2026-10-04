@@ -26,6 +26,10 @@ import javax.inject.Singleton
 abstract class RepositoryModule {
     @Binds
     @Singleton
+    abstract fun bindPremiumRepository(repository: com.nexappra.filerecovery.data.billing.PlayBillingRepository): com.nexappra.filerecovery.domain.repository.PremiumRepository
+
+    @Binds
+    @Singleton
     abstract fun bindStorageRepository(
         storageRepository: AndroidStorageRepository,
     ): StorageRepository

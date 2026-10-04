@@ -13,12 +13,14 @@ import kotlinx.coroutines.launch
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val getStorageInfoUseCase: GetStorageInfoUseCase,
+    private val premium: com.nexappra.filerecovery.domain.repository.PremiumRepository,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState = _uiState.asStateFlow()
 
     init {
         refreshStorage()
+        viewModelScope.launch { premium.state.collect { billing -> _uiState.update { it.copy(isPremium = billing.access.isActive()) } } }
     }
 
     fun refreshStorage() {

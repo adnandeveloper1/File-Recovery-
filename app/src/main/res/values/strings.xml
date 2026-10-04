@@ -60,7 +60,7 @@
     <string name="settings_privacy_title">Privacy</string>
     <string name="settings_privacy_description">Processing stays on-device. This build does not upload file content or personal media metadata.</string>
     <string name="settings_premium">Premium</string>
-    <string name="settings_premium_description">Billing products are intentionally not fabricated. Open the premium screen to review the planned architecture.</string>
+    <string name="settings_premium_description">Explore recovery tools, view available Google Play plans, or restore your subscription.</string>
     <string name="open_premium">Open Premium</string>
     <string name="app_version_value">1.0</string>
     <string name="settings_version_label">App version %1$s</string>

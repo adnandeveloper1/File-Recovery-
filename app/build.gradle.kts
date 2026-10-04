@@ -17,6 +17,13 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
+        fun billingString(name: String, fallback: String = "") {
+            val value = providers.gradleProperty(name).orElse(fallback).get().replace("\\", "\\\\").replace("\"", "\\\"")
+            buildConfigField("String", name, "\"$value\"")
+        }
+        billingString("PREMIUM_MONTHLY_ID", "recovery_monthly")
+        billingString("PREMIUM_YEARLY_ID", "recovery_yearly")
+        billingString("PURCHASE_VERIFICATION_URL")
 
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
@@ -46,10 +53,15 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
 dependencies {
+    implementation("com.android.billingclient:billing:9.1.0")
+    implementation("io.coil-kt.coil3:coil-video:3.3.0")
+    implementation("androidx.exifinterface:exifinterface:1.4.2")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.animation)

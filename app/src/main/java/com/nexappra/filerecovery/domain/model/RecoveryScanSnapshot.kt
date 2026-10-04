@@ -17,4 +17,6 @@ data class RecoveryScanSnapshot(
     val categoryCounts: Map<RecoveryResultFilter, Int>,
     val elapsedMillis: Long,
     val errorMessage: String? = null,
+    val sessionId: String = "",
+    val previewFiles: List<RecoverableFile> = emptyList(),
 )

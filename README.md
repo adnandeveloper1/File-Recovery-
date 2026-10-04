@@ -1,109 +1,51 @@
-# File Recovery - Photo Recovery
+# File Recovery
 
-Production-oriented Android foundation for a file recovery utility built with Kotlin and Jetpack Compose.
+Android photo and video discovery, preview and recovery-copy app built with Kotlin, Jetpack Compose, Hilt, coroutines and StateFlow. Existing theme preferences and the single-activity architecture are preserved.
 
-## Current Slice
+## App flow
 
-This repository now includes the Phase 1 foundation requested in the prompt:
+Home offers **Photos**, **Videos** and a combined **Quick scan**. Photos query only image collections; Videos query only video collections. Audio, documents and archives are excluded at classification and result boundaries. Quick scan queries MediaStore metadata without recursively walking shared storage or opening every file.
 
-- Single-activity Compose app shell
-- Material 3-inspired custom design system
-- Clean-architecture package layout
-- Hilt dependency injection
-- Navigation Compose routing
-- DataStore-backed theme preferences
-- Home screen closely modeled after the supplied reference
-- Honest placeholder screens for scan, categories, recovered, tools, settings, and premium
-- Real storage usage loading via Android storage APIs
+Results appear during scanning. Quick scan has a 20-second work budget; Deep scan has a 120-second budget. Users can stop early and retain partial results. Provider queries have cancellation signals. Completed and partial sessions are cached (latest three) so results survive process recreation while cache/source access remains available.
 
-## Tech Stack
+Free users can scan and inspect standard previews. Saving files, deep folder searches, detailed image previews/video playback, repair copies and cloud export require verified Premium. Every write is gated again in the repository, independently of the UI.
 
-- Kotlin
-- Jetpack Compose
-- Material 3
-- MVVM + Clean Architecture
-- Hilt
-- Coroutines + StateFlow
-- Navigation Compose
-- DataStore Preferences
+- **Recovery:** original-byte copies to a user-chosen writable folder, unique destination names, cancellation checks and failed-copy cleanup.
+- **Deep scan:** accessible selected folders plus permitted shared media locations. Known non-media files are skipped; ambiguous cache names can be checked using small headers.
+- **Repair:** re-encode decodable photo pixels into a new PNG up to 2048 px; preserve the original. Partial decoding is attempted where Android supports it.
+- **Cloud export:** a ZIP containing original source bytes, saved through Android's document picker to Google Drive or another installed provider.
+- **Saved:** persistent history of successful saves, repairs and exports.
 
-## Package Overview
+## Recovery limits
 
-```text
-com.nexappra.filerecovery
-├── core
-│   ├── common
-│   ├── designsystem
-│   ├── ui
-│   └── utils
-├── data
-│   └── repository
-├── di
-├── domain
-│   ├── model
-│   ├── repository
-│   └── usecase
-└── presentation
-    ├── app
-    ├── home
-    ├── navigation
-    ├── premium
-    ├── recovered
-    ├── scan
-    ├── settings
-    └── tools
-```
+Android does not expose raw erased sectors or other apps' private caches to a normal app. Results can include existing media, hidden copies and any accessible trash/cache copies. This app does not claim that existing gallery files were deleted, that unavailable originals can be reconstructed, or that re-encoding removes severe blur. File access can be revoked or a source can disappear between scan and recovery.
 
-## Implemented Behavior
+Deep scans require folder access and Premium. Cloud export requires a compatible installed provider. Large writes should remain in the foreground; leaving the result screen or terminating the app can cancel an operation. Partial files created by a failed operation are cleaned up where the provider permits it.
 
-### Home
+## Billing
 
-- Premium-styled top app bar
-- Device storage card with real computed usage
-- Full scan CTA card
-- Responsive adaptive category grid
-- Bottom navigation
-- Light and dark Compose previews
+Google Play Billing loads actual product prices and purchases. A server checks purchase state, product and expiry, then confirms acknowledgement. Premium access is held in memory and bounded to 15 minutes between checks; a local preference cannot unlock it.
 
-### Settings
+The default build intentionally disables purchases until an HTTPS verifier is configured. See [billing-server/README.md](billing-server/README.md) for the service, Gradle properties and Play Console release requirements. No real purchase or production backend deployment is implied by a successful local build.
 
-- Persisted appearance mode:
-  - System
-  - Light
-  - Dark
+## Build and targeted validation
 
-### Secondary Screens
-
-- Scan screen with honest non-fake state messaging
-- Category detail placeholders that explain supported future behavior
-- Recovered history placeholder
-- Tools dashboard placeholder
-- Premium architecture placeholder
-
-## Build
+Use Android Studio's bundled JDK and the installed Android SDK:
 
 ```powershell
-.\gradlew.bat assembleDebug
+.\gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:assembleDebugAndroidTest :app:lintDebug --no-daemon --max-workers=1
 ```
 
-Latest verified result in this workspace:
+Device tests cover category-specific MediaStore scanning, incremental results, persisted/partial sessions, original-byte ZIP export, PNG repair and the home category flow. Unit tests cover classification, entitlement expiry, permission/category routing and failed-recovery retry. The verifier includes subscription-state and acknowledgement tests:
 
-- `BUILD SUCCESSFUL`
-- Date: August 7, 2026
-- Task: `assembleDebug`
+```text
+cd billing-server
+node --test --test-isolation=none verify.test.mjs
+```
 
-## Important Build Note
+On memory-constrained computers, compile before starting the emulator and use a single Gradle build at a time. Kotlin compilation runs in-process and Gradle workers are limited. The existing AGP/KSP compatibility property `android.disallowKotlinSourceSets=false` remains.
 
-This project currently uses a compatibility flag for AGP 9 built-in Kotlin with KSP:
+## Release verification still required
 
-- `android.disallowKotlinSourceSets=false`
+Configure active Play subscription products and deploy the HTTPS verifier with the app's Play Console service-account access. Validate real purchases/restores/refunds with licence testers, cloud export with the intended provider, and behavior on representative physical devices and Android versions before a public release. These account/device checks cannot be replaced by local unit tests.
 
-That flag is present only to keep Hilt + KSP compiling cleanly in the current environment.
-
-## Next Recommended Slice
-
-1. Add permission orchestration for media access by Android version.
-2. Introduce scanner abstractions and supported MediaStore-backed queries.
-3. Build real category result screens for photos, videos, audio, documents, downloads, and screenshots.
-4. Add Room-backed recovered history.
-5. Add recovery destination flow with SAF/MediaStore support.
