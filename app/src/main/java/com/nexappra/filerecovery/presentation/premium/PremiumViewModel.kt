@@ -12,4 +12,5 @@ class PremiumViewModel @Inject constructor(private val billing: PlayBillingRepos
     init { billing.refresh() }
     fun restore() = billing.refresh()
     fun purchase(activity: Activity, productId: String) = billing.purchase(activity, productId)
+    fun setDebugPreview(enabled: Boolean) = billing.setDebugPreview(enabled)
 }

@@ -13,17 +13,17 @@ import com.nexappra.filerecovery.core.ui.components.*
 @Composable
 fun ToolsScreen(onDeepScan: () -> Unit = {}, onScan: () -> Unit = {}, modifier: Modifier = Modifier) {
     LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        item { FlowHeader("A little extra care", "RECOVERY TOOLS") }
+        item { FlowHeader("Recovery tools", "More ways to save your media") }
         item { FlowPanel {
-            FeatureLine(Icons.Rounded.ManageSearch, "Look a little deeper", "Choose an accessible folder and search for photos, videos and readable cache copies. Premium required.")
+            FeatureLine(Icons.Rounded.ManageSearch, "Deep scan", "Choose an accessible folder and search for photos, videos and readable cache copies. Premium required.")
             Button(onClick = onDeepScan) { Text("Open deep scan") }
         } }
         item { FlowPanel {
-            FeatureLine(Icons.Rounded.AutoFixHigh, "Give a photo a fresh copy", "Scan, select one photo, then choose Repair copy. Re-encodes readable pixels to PNG; missing data cannot be reconstructed.")
+            FeatureLine(Icons.Rounded.AutoFixHigh, "Photo repair", "Scan, select one photo, then choose Repair copy. Re-encodes readable pixels to PNG; missing data cannot be reconstructed.")
             OutlinedButton(onClick = onScan) { Text("Find a photo to repair") }
         } }
         item { FlowPanel {
-            FeatureLine(Icons.Rounded.CloudUpload, "Keep a copy elsewhere", "Select files from scan results, then Cloud export. Choose Google Drive or another provider in the system picker.")
+            FeatureLine(Icons.Rounded.CloudUpload, "Cloud export", "Select files from scan results, then Cloud export. Choose Google Drive or another provider in the system picker.")
             OutlinedButton(onClick = onScan) { Text("Choose files to export") }
         } }
     }

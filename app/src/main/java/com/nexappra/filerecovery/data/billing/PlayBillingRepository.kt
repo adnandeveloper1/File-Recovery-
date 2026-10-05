@@ -9,25 +9,41 @@ import com.nexappra.filerecovery.domain.repository.PremiumRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.SharingStarted
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URI
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** Entitlements come only from a server-verified Play purchase, never a local toggle. */
+/** Release entitlements require server verification. Debug previews are process-local and explicitly labelled. */
 @Singleton
 class PlayBillingRepository @Inject constructor(@ApplicationContext context: Context) : PremiumRepository {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val products = setOf(BuildConfig.PREMIUM_MONTHLY_ID, BuildConfig.PREMIUM_YEARLY_ID).filter { it.isNotBlank() }.toSet()
     private val configured = runCatching {
         val endpoint = URI(BuildConfig.PURCHASE_VERIFICATION_URL)
-        endpoint.scheme == "https" && !endpoint.host.isNullOrBlank() && products.isNotEmpty()
+        endpoint.scheme == "https" && !endpoint.host.isNullOrBlank() &&
+            endpoint.userInfo == null && endpoint.fragment == null && products.size == 2
     }.getOrDefault(false)
     private val mutableState = MutableStateFlow(BillingState(configured = configured))
-    override val state = mutableState.asStateFlow()
+    private val debugPreview = MutableStateFlow(false)
+    override val state = combine(mutableState, debugPreview) { billing, preview ->
+        if (BuildConfig.DEBUG && preview) billing.copy(
+            access = PremiumAccess(true, Long.MAX_VALUE),
+            isDebugPreview = true,
+            isLoading = false,
+            message = "Test access only. No purchase has been made. Access resets when the app process closes.",
+        ) else billing
+    }.stateIn(scope, SharingStarted.Eagerly, mutableState.value)
+
+    fun setDebugPreview(enabled: Boolean) {
+        check(BuildConfig.DEBUG) { "Test access is unavailable in release builds." }
+        debugPreview.value = enabled
+    }
     private var connecting = false
     private var refreshing = false
     private var verificationJob: Job? = null
@@ -84,6 +100,20 @@ class PlayBillingRepository @Inject constructor(@ApplicationContext context: Con
         QueryProductDetailsParams.Product.newBuilder().setProductId(id).setProductType(BillingClient.ProductType.SUBS).build()
     }).build()
 
+    private fun basePlan(product: ProductDetails): ProductDetails.SubscriptionOfferDetails? {
+        val period = when (product.productId) {
+            BuildConfig.PREMIUM_MONTHLY_ID -> "P1M"
+            BuildConfig.PREMIUM_YEARLY_ID -> "P1Y"
+            else -> return null
+        }
+        // The displayed period and renewal terms must match the exact checkout offer.
+        return product.subscriptionOfferDetails?.firstOrNull { offer ->
+            val price = offer.pricingPhases.pricingPhaseList.singleOrNull()
+            offer.offerId == null && price?.billingPeriod == period &&
+                price.recurrenceMode == ProductDetails.RecurrenceMode.INFINITE_RECURRING
+        }
+    }
+
     private fun loadCatalogAndPurchases() {
         refreshing = true
         mutableState.update { it.copy(isLoading = true, message = null) }
@@ -91,7 +121,7 @@ class PlayBillingRepository @Inject constructor(@ApplicationContext context: Con
             if (result.responseCode == BillingClient.BillingResponseCode.OK) {
                 val offers = details.productDetailsList.mapNotNull { product ->
                     // Offer-free base plans avoid ambiguous trial/introductory pricing.
-                    val offer = product.subscriptionOfferDetails?.firstOrNull { it.offerId == null } ?: return@mapNotNull null
+                    val offer = basePlan(product) ?: return@mapNotNull null
                     val price = offer.pricingPhases.pricingPhaseList.lastOrNull() ?: return@mapNotNull null
                     PremiumOffer(product.productId, if (price.billingPeriod == "P1Y") "Yearly" else "Monthly", price.formattedPrice, price.billingPeriod)
                 }
@@ -112,7 +142,7 @@ class PlayBillingRepository @Inject constructor(@ApplicationContext context: Con
         // Fetch fresh ProductDetails immediately before opening checkout.
         client.queryProductDetailsAsync(productQuery()) { result, details ->
             val product = details.productDetailsList.firstOrNull { it.productId == productId }
-            val offer = product?.subscriptionOfferDetails?.firstOrNull { it.offerId == null }
+            val offer = product?.let(::basePlan)
             if (result.responseCode != BillingClient.BillingResponseCode.OK || product == null || offer == null) {
                 message("This plan is currently unavailable. Please try again later.")
                 return@queryProductDetailsAsync
@@ -180,7 +210,8 @@ class PlayBillingRepository @Inject constructor(@ApplicationContext context: Con
                 String(buffer, 0, length, Charsets.UTF_8)
             }
             val json = JSONObject(response)
-            val verified = json.optBoolean("verified") && json.optBoolean("acknowledged") && json.optString("productId") in products
+            val verified = json.optBoolean("verified") && json.optBoolean("acknowledged") &&
+                json.optString("productId") in products && json.optString("productId") in purchase.products
             PremiumAccess(verified, minOf(json.optLong("expiresAtMillis"), System.currentTimeMillis() + 15 * 60_000L))
         } finally { connection.disconnect() }
     }

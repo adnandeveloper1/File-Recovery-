@@ -38,8 +38,8 @@ class FullRecoveryResultsViewModel @Inject constructor(
                 val session = repository.getSession(sessionId)
                 if (session == null) mutableState.update { it.copy(isLoading = false, hasMissingSession = true) }
                 else {
-                    val files = session.files.filter { it.fileType in setOf(RecoveryFileType.Photo, RecoveryFileType.Video) }.sortedByDescending { it.dateModifiedMillis }
-                    val selected = savedStateHandle.get<ArrayList<String>>("selected_ids").orEmpty().toSet().intersect(files.map { it.id }.toSet())
+                    val files = orderedFiles(session)
+                    val selected = restoredSelection(files)
                     mutableState.update { it.copy(isLoading = false, allFiles = files, visibleFiles = files, totalFound = files.size,
                         selectedIds = selected, selectedTotalSizeBytes = files.filter { it.id in selected }.sumOf { it.sizeBytes },
                         selectedCategory = session.selectedCategory, scanDurationMillis = session.durationMillis,
@@ -66,8 +66,20 @@ class FullRecoveryResultsViewModel @Inject constructor(
         select(if (uiState.value.selectedIds.containsAll(visible)) uiState.value.selectedIds - visible else uiState.value.selectedIds + visible)
     }
     private fun select(ids: Set<String>) {
-        savedStateHandle["selected_ids"] = ArrayList(ids)
+        // Thousands of URI/path IDs can exceed Android's saved-state Binder limit.
+        // Positions refer to the immutable, persisted session in the same stable order.
+        savedStateHandle["selected_indices"] = uiState.value.allFiles.withIndex()
+            .filter { it.value.id in ids }.map { it.index }.toIntArray()
+        savedStateHandle.remove<ArrayList<String>>("selected_ids")
         mutableState.update { it.copy(selectedIds = ids, selectedTotalSizeBytes = it.allFiles.filter { f -> f.id in ids }.sumOf { f -> f.sizeBytes }) }
+    }
+    private fun orderedFiles(session: RecoveryScanSession) = session.files
+        .filter { it.fileType in setOf(RecoveryFileType.Photo, RecoveryFileType.Video) }.sortedByDescending { it.dateModifiedMillis }
+
+    private fun restoredSelection(files: List<RecoverableFile>): Set<String> {
+        val indices = savedStateHandle.get<IntArray>("selected_indices")
+        return if (indices != null) indices.map { files.getOrNull(it)?.id }.filterNotNull().toSet()
+        else savedStateHandle.get<ArrayList<String>>("selected_ids").orEmpty().toSet().intersect(files.map { it.id }.toSet())
     }
     private fun filterResults() {
         mutableState.update { state -> state.copy(visibleFiles = state.allFiles.filter { file ->
@@ -83,12 +95,19 @@ class FullRecoveryResultsViewModel @Inject constructor(
     fun repairSelectedTo(destination: String) = perform { ids -> repository.repairPhoto(sessionId, ids.single(), destination) }
     private fun perform(action: suspend (Set<String>) -> RecoveryCopyResult) {
         if (uiState.value.isRecovering) return
-        val ids = uiState.value.selectedIds.ifEmpty { savedStateHandle.get<ArrayList<String>>("selected_ids").orEmpty().toSet() }
-        if (ids.isEmpty()) return
+        val currentIds = uiState.value.selectedIds
+        if (currentIds.isEmpty() && savedStateHandle.get<IntArray>("selected_indices")?.isNotEmpty() != true &&
+            savedStateHandle.get<ArrayList<String>>("selected_ids").isNullOrEmpty()) return
         mutableState.update { it.copy(isRecovering = true) }
         viewModelScope.launch {
             try {
                 premium.requirePremium()
+                // A document-picker result can arrive before this screen finishes reloading.
+                val ids = currentIds.ifEmpty {
+                    val session = repository.getSession(sessionId) ?: error("This scan is no longer available. Please scan again.")
+                    restoredSelection(orderedFiles(session))
+                }
+                check(ids.isNotEmpty()) { "Select the files to save and try again." }
                 val result = action(ids)
                 if (result.skippedCount == 0) select(emptySet())
                 messages.send(FullRecoveryResultsEvent.ShowMessage("Saved ${result.recoveredCount} file(s)." + if (result.skippedCount > 0) " ${result.skippedCount} could not be read; your selection is kept for retry." else ""))

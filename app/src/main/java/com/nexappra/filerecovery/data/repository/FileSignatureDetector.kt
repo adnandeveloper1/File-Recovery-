@@ -2,32 +2,53 @@ package com.nexappra.filerecovery.data.repository
 
 import com.nexappra.filerecovery.domain.model.RecoveryFileType
 import java.io.File
-import java.io.FileInputStream
 import java.io.InputStream
 
-/** Identifies common recoverable media from a small header read, not its filename. */
+/** Identifies media using at most 32 bytes, including streams that return short reads. */
 internal object FileSignatureDetector {
+    data class Signature(val type: RecoveryFileType, val mimeType: String)
 
-    fun detect(file: File): RecoveryFileType? = runCatching {
-        FileInputStream(file).use(::detect)
-    }.getOrNull()
+    fun detect(file: File): RecoveryFileType? = inspect(file)?.type
+    fun detect(input: InputStream): RecoveryFileType? = inspect(input)?.type
+    fun inspect(file: File): Signature? = runCatching { file.inputStream().use(::inspect) }.getOrNull()
 
-    fun detect(input: InputStream): RecoveryFileType? {
-            val header = ByteArray(32)
-            val count = input.read(header)
-            if (count < 3) return null
-            return when {
-                header.startsWith(0xFF, 0xD8, 0xFF) -> RecoveryFileType.Photo
-                header.startsWith(0x89, 0x50, 0x4E, 0x47) -> RecoveryFileType.Photo
-                header.asciiAt(0, "GIF87a") || header.asciiAt(0, "GIF89a") -> RecoveryFileType.Photo
-                header.asciiAt(0, "RIFF") && header.asciiAt(8, "WEBP") -> RecoveryFileType.Photo
-                header.asciiAt(0, "%PDF") -> RecoveryFileType.Document
-                header.startsWith(0x50, 0x4B, 0x03, 0x04) -> RecoveryFileType.Archive
-                header.asciiAt(4, "ftyp") && header.hasHeifBrand() -> RecoveryFileType.Photo
-                header.asciiAt(4, "ftyp") && header.hasVideoBrand() -> RecoveryFileType.Video
-                header.asciiAt(0, "ID3") || header.hasMpegAudioFrame() -> RecoveryFileType.Audio
+    fun inspect(input: InputStream): Signature? {
+        val buffer = ByteArray(32)
+        var count = 0
+        while (count < buffer.size) {
+            val read = input.read(buffer, count, buffer.size - count)
+            if (read < 0) break
+            if (read == 0) {
+                val next = input.read()
+                if (next < 0) break
+                buffer[count++] = next.toByte()
+            } else count += read
+        }
+        val header = buffer.copyOf(count)
+        fun photo(mime: String) = Signature(RecoveryFileType.Photo, mime)
+        fun video(mime: String) = Signature(RecoveryFileType.Video, mime)
+        return when {
+            header.startsWith(0xFF, 0xD8, 0xFF) -> photo("image/jpeg")
+            header.startsWith(0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A) -> photo("image/png")
+            header.asciiAt(0, "GIF87a") || header.asciiAt(0, "GIF89a") -> photo("image/gif")
+            header.asciiAt(0, "RIFF") && header.asciiAt(8, "WEBP") -> photo("image/webp")
+            header.asciiAt(0, "RIFF") && header.asciiAt(8, "AVI ") -> video("video/x-msvideo")
+            header.asciiAt(0, "BM") && count >= 14 -> photo("image/bmp")
+            header.startsWith(0x49, 0x49, 0x2A, 0x00) || header.startsWith(0x4D, 0x4D, 0x00, 0x2A) -> photo("image/tiff")
+            header.asciiAt(0, "%PDF") -> Signature(RecoveryFileType.Document, "application/pdf")
+            header.startsWith(0x50, 0x4B, 0x03, 0x04) -> Signature(RecoveryFileType.Archive, "application/zip")
+            header.asciiAt(4, "ftyp") -> when {
+                header.hasBrand("avif", "avis") -> photo("image/avif")
+                header.hasBrand("heic", "heix", "hevc", "hevx") -> photo("image/heic")
+                header.hasBrand("mif1", "msf1") -> photo("image/heif")
+                header.asciiAt(8, "qt  ") -> video("video/quicktime")
+                listOf("3gp4", "3gp5", "3gp6").any { header.asciiAt(8, it) } -> video("video/3gpp")
+                listOf("isom", "iso2", "mp41", "mp42", "avc1", "M4V ").any { header.asciiAt(8, it) } -> video("video/mp4")
                 else -> null
             }
+            header.asciiAt(0, "ID3") || header.hasMpegAudioFrame() -> Signature(RecoveryFileType.Audio, "audio/mpeg")
+            else -> null
+        }
     }
 
     private fun ByteArray.startsWith(vararg values: Int): Boolean =
@@ -36,13 +57,8 @@ internal object FileSignatureDetector {
     private fun ByteArray.asciiAt(offset: Int, value: String): Boolean =
         value.indices.all { index -> size > offset + index && this[offset + index].toInt().toChar() == value[index] }
 
-    private fun ByteArray.hasHeifBrand(): Boolean {
-        val brands = listOf("heic", "heix", "hevc", "hevx", "mif1", "msf1", "avif", "avis")
-        return brands.any { brand -> asciiAt(8, brand) || asciiAt(16, brand) }
-    }
-
-    private fun ByteArray.hasVideoBrand(): Boolean =
-        listOf("isom", "iso2", "mp41", "mp42", "avc1", "M4V ", "qt  ", "3gp4", "3gp5", "3gp6").any { asciiAt(8, it) }
+    private fun ByteArray.hasBrand(vararg brands: String): Boolean =
+        brands.any { brand -> asciiAt(8, brand) || (16..size - 4 step 4).any { asciiAt(it, brand) } }
 
     private fun ByteArray.hasMpegAudioFrame(): Boolean =
         size > 1 && (this[0].toInt() and 0xFF) == 0xFF && (this[1].toInt() and 0xE0) == 0xE0

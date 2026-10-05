@@ -23,6 +23,6 @@ PREMIUM_YEARLY_ID=recovery_yearly
 PURCHASE_VERIFICATION_URL=https://YOUR_DEPLOYED_SERVICE/verify
 ```
 
-Create/activate matching monthly and yearly auto-renewing subscription products and base plans in Play Console. Pricing displayed by the app comes from Play. Upload a signed build to an internal test track and test purchase, pending payment, cancellation, restore, expiry and refund using licence testers. Backend deployment, Play products and a real licence purchase have not been performed by this code change.
+Create/activate two distinct subscription products with matching monthly (`P1M`) and yearly (`P1Y`) auto-renewing base plans in Play Console. The app accepts the full-price recurring base plan for the configured period; prepaid, trial and other-period offers are excluded so checkout matches the displayed renewal terms. Pricing displayed by the app comes from Play. Upload a signed build to an internal test track and test purchase, pending payment, cancellation, restore, expiry and refund using licence testers. Backend deployment, Play products and a real licence purchase have not been performed by this code change.
 
 References: [Billing integration](https://developer.android.com/google/play/billing/integrate), [Subscription states](https://developers.google.com/android-publisher/api-ref/rest/v3/purchases.subscriptionsv2), [Purchase acknowledgement](https://developers.google.com/android-publisher/api-ref/rest/v3/purchases.subscriptions/acknowledge).

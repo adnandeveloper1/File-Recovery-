@@ -14,4 +14,5 @@ data class BillingState(
     val isLoading: Boolean = false,
     val message: String? = null,
     val configured: Boolean = false,
+    val isDebugPreview: Boolean = false,
 )

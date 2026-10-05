@@ -16,8 +16,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
-val RecoveryInk = Color(0xFF102D32)
-val RecoveryMint = Color(0xFFACEDD1)
+val RecoveryInk = Color(0xFF122B56)
+val RecoveryMint = Color(0xFFBFDBFE)
 
 @Composable
 fun FlowHeader(title: String, subtitle: String? = null, onBack: (() -> Unit)? = null, trailing: @Composable RowScope.() -> Unit = {}) {
@@ -52,4 +52,4 @@ fun FeatureLine(icon: ImageVector, title: String, description: String) {
     }
 }
 
-fun Modifier.recoveryHero() = background(Brush.linearGradient(listOf(RecoveryInk, Color(0xFF21514A))), RoundedCornerShape(30.dp))
+fun Modifier.recoveryHero() = background(Brush.linearGradient(listOf(RecoveryInk, Color(0xFF234E94))), RoundedCornerShape(24.dp))

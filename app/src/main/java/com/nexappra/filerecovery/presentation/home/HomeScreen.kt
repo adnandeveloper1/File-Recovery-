@@ -35,10 +35,10 @@ fun HomeScreen(uiState: HomeUiState, onCategoryClick: (RecoveryCategory) -> Unit
     onPremiumClick: () -> Unit, onRetryStorage: () -> Unit, modifier: Modifier = Modifier, onDeepScan: () -> Unit = onPremiumClick) {
     LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(22.dp), verticalArrangement = Arrangement.spacedBy(22.dp)) {
         item {
-            FlowHeader("File Recovery", "YOUR MEMORIES, WITHIN REACH") {
+            FlowHeader("File Recovery", "Photos & videos") {
                 FilledTonalButton(onClick = onPremiumClick, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)) {
                     Icon(Icons.Rounded.WorkspacePremium, null, Modifier.size(18.dp)); Spacer(Modifier.width(5.dp))
-                    Text(if (uiState.isPremium) "PRO" else "Go Pro", style = MaterialTheme.typography.labelMedium)
+                    Text(if (uiState.isPremium) "Plus" else "Get Plus", style = MaterialTheme.typography.labelMedium)
                 }
             }
         }
@@ -46,10 +46,10 @@ fun HomeScreen(uiState: HomeUiState, onCategoryClick: (RecoveryCategory) -> Unit
             Column(Modifier.fillMaxWidth().recoveryHero().padding(26.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Icon(Icons.Rounded.Radar, null, tint = RecoveryMint, modifier = Modifier.size(22.dp))
-                    Text("A FRESH LOOK FOR LOST MOMENTS", fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, color = RecoveryMint)
+                    Text("PHOTO & VIDEO RECOVERY", fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, color = RecoveryMint)
                 }
-                Text("Find the moments\nyou want back.", fontSize = 31.sp, lineHeight = 36.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                Text("A focused search for your photos and videos. Preview what is available as we find it.", color = Color(0xFFD1E5DF), style = MaterialTheme.typography.bodyMedium)
+                Text("Find your photos.\nSave your videos.", fontSize = 31.sp, lineHeight = 36.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                Text("A focused search for your photos and videos. Preview what is available as we find it.", color = Color(0xFFDCE8FA), style = MaterialTheme.typography.bodyMedium)
                 Button(onClick = onScanClick, modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp), shape = RoundedCornerShape(16.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = RecoveryMint, contentColor = RecoveryInk)) {
                     Text("Quick scan", fontWeight = FontWeight.Bold); Spacer(Modifier.weight(1f)); Icon(Icons.AutoMirrored.Rounded.ArrowForward, null)
@@ -62,7 +62,7 @@ fun HomeScreen(uiState: HomeUiState, onCategoryClick: (RecoveryCategory) -> Unit
             Text("Scan one category. See only what matters.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(14.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                CategoryTile("Photos", "JPG, PNG, HEIC + more", Icons.Rounded.PhotoLibrary, Color(0xFFE0F2EB), Modifier.weight(1f)) { onCategoryClick(RecoveryCategory.Photos) }
+                CategoryTile("Photos", "JPG, PNG, HEIC + more", Icons.Rounded.PhotoLibrary, Color(0xFFDBEAFE), Modifier.weight(1f)) { onCategoryClick(RecoveryCategory.Photos) }
                 CategoryTile("Videos", "MP4, MOV, MKV + more", Icons.Rounded.VideoLibrary, Color(0xFFEDE7F9), Modifier.weight(1f)) { onCategoryClick(RecoveryCategory.Videos) }
             }
         }
@@ -70,8 +70,8 @@ fun HomeScreen(uiState: HomeUiState, onCategoryClick: (RecoveryCategory) -> Unit
             FlowPanel(Modifier.fillMaxWidth().clickable(onClick = onDeepScan)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Rounded.TravelExplore, null, tint = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.width(10.dp)); Text("Look a little deeper", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                    Text("PRO", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall)
+                    Spacer(Modifier.width(10.dp)); Text("Deep scan", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Text("PLUS", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall)
                 }
                 Text("Search chosen folders for hidden media and readable cached copies.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
                 Text("Explore deep scan →", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)

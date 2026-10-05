@@ -19,6 +19,10 @@ data class MediaScanPolicy(val category: RecoveryCategory? = null) {
     fun shouldReadHeader(name: String): Boolean = name.substringAfterLast('.', "")
         .lowercase(Locale.ROOT) in setOf("", "cache", "tmp", "dat", "bin")
 
+    fun shouldReadHeader(name: String, mime: String?): Boolean = shouldReadHeader(name) &&
+        mime?.substringBefore(';')?.trim()?.lowercase(Locale.ROOT).orEmpty() in
+        setOf("", "application/octet-stream", "application/unknown", "chemical/x-cache", "application/x-cache")
+
     companion object {
         val imageExtensions = setOf("jpg", "jpeg", "png", "webp", "gif", "bmp", "heic", "heif", "avif", "dng", "tif", "tiff")
         val videoExtensions = setOf("mp4", "m4v", "mkv", "3gp", "3gpp", "webm", "mov", "avi", "mpeg", "mpg", "ts")

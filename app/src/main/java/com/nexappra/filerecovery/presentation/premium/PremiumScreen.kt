@@ -8,18 +8,23 @@ import android.net.Uri
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nexappra.filerecovery.BuildConfig
 import com.nexappra.filerecovery.core.ui.components.*
@@ -32,17 +37,35 @@ fun PremiumRoute(onClose: () -> Unit, viewModel: PremiumViewModel = hiltViewMode
     val chosen = state.offers.firstOrNull { it.productId == selected } ?: state.offers.firstOrNull()
     val active = state.access.isActive()
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-        item { FlowHeader("Recovery Plus", "MORE WAYS TO SAVE WHAT MATTERS", onBack = onClose) }
+        item { FlowHeader("Recovery Plus", "Premium recovery tools", onBack = onClose) }
         item {
             Column(Modifier.fillMaxWidth().recoveryHero().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Icon(Icons.Rounded.AutoAwesome, null, tint = RecoveryMint)
-                Text(if (active) "Your memories.\nMore possibilities." else "Found something\nworth keeping?", style = MaterialTheme.typography.headlineLarge, color = Color.White)
-                Text("Free scans help you explore. Plus helps you save, preview and export.", color = Color.White.copy(alpha = .8f))
-                if (active) AssistChip(onClick = {}, label = { Text("Premium active", color = RecoveryMint) })
+                Icon(Icons.Rounded.VerifiedUser, null, tint = RecoveryMint, modifier = Modifier.size(28.dp))
+                Text(if (active) "Ready to recover" else "Keep what matters", style = MaterialTheme.typography.headlineLarge, color = Color.White)
+                Text("Save original photos and videos, search deeper and export your files in one place.", color = Color.White.copy(alpha = .8f))
+                if (active) Text(if (state.isDebugPreview) "TEST ACCESS · DEBUG BUILD" else "SUBSCRIPTION ACTIVE", style = MaterialTheme.typography.labelMedium, color = RecoveryMint)
+            }
+        }
+        if (BuildConfig.DEBUG) item {
+            FlowPanel(Modifier.fillMaxWidth()) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Test Premium features", style = MaterialTheme.typography.titleSmall)
+                        Text("Debug build only · no payment", style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(checked = state.isDebugPreview, onCheckedChange = viewModel::setDebugPreview,
+                        modifier = Modifier.semantics { contentDescription = "Test Premium features" })
+                }
+                Text("Try deep scan, original recovery, detailed previews, repair and export. Test access resets when the app closes.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         item {
-            FlowPanel {
+            Text("Included with Plus", style = MaterialTheme.typography.titleMedium)
+        }
+        item {
+            FlowPanel(Modifier.fillMaxWidth()) {
                 FeatureLine(Icons.Rounded.HighQuality, "Unlimited original files", "Copy all readable photos and videos in their existing quality.")
                 FeatureLine(Icons.Rounded.ManageSearch, "Deeper folder search", "Search folders you choose, including accessible hidden and cached media.")
                 FeatureLine(Icons.Rounded.ZoomIn, "Detailed previews", "Zoom into photos and play videos before saving.")
@@ -52,26 +75,37 @@ fun PremiumRoute(onClose: () -> Unit, viewModel: PremiumViewModel = hiltViewMode
         }
         if (active) {
             item { Button(onClick = onClose, modifier = Modifier.fillMaxWidth()) { Text("Continue with Plus") } }
-            item {
+            if (!state.isDebugPreview) item {
                 OutlinedButton(onClick = {
                     runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/account/subscriptions?package=" + BuildConfig.APPLICATION_ID))) }
                 }, modifier = Modifier.fillMaxWidth()) { Text("Manage subscription in Google Play") }
             }
         } else {
-            items(state.offers, key = { it.productId }) { offer ->
-                val isSelected = chosen?.productId == offer.productId
-                Card(onClick = { selected = offer.productId }, shape = RoundedCornerShape(20.dp),
-                    border = BorderStroke(if (isSelected) 2.dp else 1.dp, if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                    Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Column { Text(offer.title, style = MaterialTheme.typography.titleMedium); Text(if (offer.billingPeriod == "P1Y") "Billed every year" else "Billed every month", style = MaterialTheme.typography.bodySmall) }
-                        Text(offer.price, style = MaterialTheme.typography.titleLarge)
+            if (state.offers.isNotEmpty()) item {
+                Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    state.offers.forEach { offer ->
+                        val isSelected = chosen?.productId == offer.productId
+                        Surface(shape = RoundedCornerShape(16.dp),
+                            border = BorderStroke(if (isSelected) 2.dp else 1.dp,
+                                if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
+                            color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface) {
+                            Row(Modifier.fillMaxWidth().selectable(selected = isSelected,
+                                onClick = { selected = offer.productId }, role = Role.RadioButton).padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                RadioButton(selected = isSelected, onClick = null)
+                                Column(Modifier.weight(1f)) {
+                                    Text(offer.title, style = MaterialTheme.typography.titleMedium)
+                                    Text(if (offer.billingPeriod == "P1Y") "Billed yearly" else "Billed monthly", style = MaterialTheme.typography.bodySmall)
+                                }
+                                Text(offer.price, style = MaterialTheme.typography.titleMedium)
+                            }
+                        }
                     }
                 }
             }
             item {
                 Button(onClick = { val activity = context.findActivity(); if (activity != null && chosen != null) viewModel.purchase(activity, chosen.productId) },
-                    enabled = state.configured && chosen != null && !state.isLoading, modifier = Modifier.fillMaxWidth().height(54.dp)) {
+                    enabled = state.configured && chosen != null && !state.isLoading, modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp)) {
                     Text(if (state.isLoading) "Checking Google Play…" else if (!state.configured || chosen == null) "Plans currently unavailable" else "Subscribe with Google Play")
                 }
             }

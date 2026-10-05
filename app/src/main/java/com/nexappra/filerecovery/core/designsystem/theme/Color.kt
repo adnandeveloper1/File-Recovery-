@@ -5,20 +5,20 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
 
 // Brand Colors
-val BrandPrimary = Color(0xFF216C5D)
-val BrandPrimaryStrong = Color(0xFF163E35)
-val BrandSecondary = Color(0xFFACEDD1)
-val AccentCyan = Color(0xFF347C80)
+val BrandPrimary = Color(0xFF2563EB)
+val BrandPrimaryStrong = Color(0xFF173B80)
+val BrandSecondary = Color(0xFFA9CAFF)
+val AccentCyan = Color(0xFF087FA3)
 
 // Modern 3D & Surface Colors
-val LightBackground = Color(0xFFF5F5F0)
+val LightBackground = Color(0xFFF5F7FB)
 val LightSurface = Color(0xFFFFFFFF)
-val LightSurfaceSoft = Color(0xFFEDF2EB)
+val LightSurfaceSoft = Color(0xFFEDF2FA)
 val LightSurfaceElevated = Color(0xFFFFFFFF)
 
-val DarkBackground = Color(0xFF0D1917)
-val DarkSurface = Color(0xFF152824)
-val DarkSurfaceSoft = Color(0xFF203A34)
+val DarkBackground = Color(0xFF0D1526)
+val DarkSurface = Color(0xFF152139)
+val DarkSurfaceSoft = Color(0xFF20304C)
 val DarkSurfaceElevated = Color(0xFF1F293D)
 
 // Text Colors

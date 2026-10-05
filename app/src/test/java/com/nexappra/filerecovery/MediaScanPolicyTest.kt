@@ -41,4 +41,33 @@ class MediaScanPolicyTest {
         assertEquals(RecoveryFileType.Photo, FileSignatureDetector.detect(ByteArrayInputStream(header("avif"))))
         assertEquals(RecoveryFileType.Video, FileSignatureDetector.detect(ByteArrayInputStream(header("mp42"))))
     }
+    @Test fun ambiguousCacheMimeAllowsHeaderInspectionButKnownDocumentsDoNot() {
+        val policy = MediaScanPolicy(RecoveryCategory.Photos)
+        assertTrue(policy.shouldReadHeader("hidden_copy.cache", "chemical/x-cache"))
+        assertTrue(policy.shouldReadHeader("thumbnail.bin", "application/octet-stream"))
+        assertFalse(policy.shouldReadHeader("document.cache", "application/pdf"))
+        assertFalse(policy.shouldReadHeader("voice.tmp", "audio/mpeg"))
+        assertEquals(RecoveryFileType.Photo, FileSignatureDetector.detect(ByteArrayInputStream(
+            byteArrayOf(0x89.toByte(), 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))))
+    }
+
+    @Test fun cacheSignatureHandlesShortReadsAndKeepsItsRealMimeType() {
+        val png = byteArrayOf(0x89.toByte(), 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)
+        val stream = object : ByteArrayInputStream(png) {
+            override fun read(bytes: ByteArray, offset: Int, length: Int): Int = super.read(bytes, offset, minOf(length, 1))
+        }
+        val signature = FileSignatureDetector.inspect(stream)
+        assertEquals(RecoveryFileType.Photo, signature?.type)
+        assertEquals("image/png", signature?.mimeType)
+        assertNull(FileSignatureDetector.inspect(ByteArrayInputStream(png.copyOf(4))))
+    }
+
+    @Test fun compatibleAvifBrandBeyondFirstSlotIsStillAnImage() {
+        val header = ByteArray(32).apply {
+            "ftyp".toByteArray().copyInto(this, 4)
+            "mif1".toByteArray().copyInto(this, 8)
+            "avif".toByteArray().copyInto(this, 24)
+        }
+        assertEquals("image/avif", FileSignatureDetector.inspect(ByteArrayInputStream(header))?.mimeType)
+    }
 }

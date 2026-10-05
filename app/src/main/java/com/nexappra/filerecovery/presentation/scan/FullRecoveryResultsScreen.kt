@@ -57,8 +57,15 @@ fun FullRecoveryResultsRoute(onBack: () -> Unit, onOpenPremium: () -> Unit = {},
             viewModel.recoverSelectedTo(uri.toString())
         }
     }
-    val cloud = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri -> if (uri != null) viewModel.exportSelectedTo(uri.toString()) }
-    val repair = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("image/png")) { uri -> if (uri != null) viewModel.repairSelectedTo(uri.toString()) }
+    fun keepReadAccess(uri: Uri) {
+        runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+    }
+    val cloud = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        if (uri != null) { keepReadAccess(uri); viewModel.exportSelectedTo(uri.toString()) }
+    }
+    val repair = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("image/png")) { uri ->
+        if (uri != null) { keepReadAccess(uri); viewModel.repairSelectedTo(uri.toString()) }
+    }
     LaunchedEffect(Unit) { viewModel.events.collect { event -> when (event) {
         is FullRecoveryResultsEvent.ShowMessage -> snackbar.showSnackbar(event.message)
         FullRecoveryResultsEvent.OpenPremium -> onOpenPremium()
@@ -83,7 +90,7 @@ fun FullRecoveryResultsRoute(onBack: () -> Unit, onOpenPremium: () -> Unit = {},
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                     TextButton(onClick = { if (state.isPremium) cloud.launch("recovered_media.zip") else onOpenPremium() }, enabled = state.selectedIds.isNotEmpty() && !state.isRecovering) {
-                        Icon(Icons.Rounded.CloudUpload, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Cloud export")
+                        Icon(Icons.Rounded.CloudUpload, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Export ZIP")
                     }
                     TextButton(onClick = { if (state.isPremium) showRepairInfo = true else onOpenPremium() },
                         enabled = state.selectedFiles.size == 1 && state.selectedFiles.first().fileType == RecoveryFileType.Photo && !state.isRecovering) {

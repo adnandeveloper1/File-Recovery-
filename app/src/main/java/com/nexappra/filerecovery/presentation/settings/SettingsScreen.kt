@@ -35,6 +35,12 @@ import androidx.compose.material.icons.rounded.LightMode
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.PhoneAndroid
 import androidx.compose.material.icons.rounded.Shield
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.material.icons.rounded.WorkspacePremium
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.nexappra.filerecovery.core.ui.components.FlowHeader
+import com.nexappra.filerecovery.BuildConfig
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -45,7 +51,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -59,7 +64,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.nexappra.filerecovery.domain.model.AppLanguage
 import com.nexappra.filerecovery.domain.model.AppThemeMode
 import com.nexappra.filerecovery.domain.model.SupportedLanguages
@@ -69,18 +74,15 @@ private val SettingsBlue = Color(0xFF2563EB)
 @Composable
 fun SettingsRoute(
     onOpenPremium: () -> Unit = {},
-    onPrivacyPolicyClick: () -> Unit = {},
-    onContactSupportClick: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     SettingsScreen(
         uiState = uiState,
         onLanguageSelected = viewModel::selectLanguage,
         onThemeSelected = viewModel::selectTheme,
-        onPrivacyPolicyClick = onPrivacyPolicyClick,
         onPermissionsClick = {
 
             val intent = Intent(
@@ -90,7 +92,7 @@ fun SettingsRoute(
 
             context.startActivity(intent)
         },
-        onContactSupportClick = onContactSupportClick,
+        onOpenPremium = onOpenPremium,
     )
 }
 
@@ -99,9 +101,8 @@ fun SettingsScreen(
     uiState: SettingsUiState,
     onLanguageSelected: (AppLanguage) -> Unit,
     onThemeSelected: (AppThemeMode) -> Unit,
-    onPrivacyPolicyClick: () -> Unit,
     onPermissionsClick: () -> Unit,
-    onContactSupportClick: () -> Unit,
+    onOpenPremium: () -> Unit = {},
 ) {
 
     var showLanguageSheet by rememberSaveable {
@@ -116,158 +117,43 @@ fun SettingsScreen(
         mutableStateOf(false)
     }
 
+    var showPrivacy by rememberSaveable { mutableStateOf(false) }
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(
-                rememberScrollState(),
-            )
-            .padding(
-                horizontal = 18.dp,
-                vertical = 26.dp,
-            ),
+        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+            .padding(horizontal = 22.dp, vertical = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-
-        /*
-         * SETTINGS TITLE
-         */
-        Text(
-            text = "Settings",
-            color = MaterialTheme.colorScheme.onBackground,
-            fontSize = 25.sp,
-            lineHeight = 30.sp,
-            fontWeight = FontWeight.Bold,
-        )
-
-        Spacer(
-            modifier = Modifier.height(26.dp),
-        )
-
-        /*
-         * GENERAL
-         */
-        SettingsSectionTitle(
-            title = "GENERAL",
-        )
-
-        Spacer(
-            modifier = Modifier.height(12.dp),
-        )
-
+        FlowHeader("Settings", "Make File Recovery work for you")
         SettingsCard {
-
-            SettingsRow(
-                icon = Icons.Rounded.Language,
-                title = "Language",
-                subtitle = uiState.selectedLanguage.displayName,
-                onClick = {
-                    showLanguageSheet = true
-                },
-            )
+            SettingsRow(Icons.Rounded.WorkspacePremium, "Recovery Plus",
+                "Premium tools, plans and restore purchases", onOpenPremium)
         }
-
-        Spacer(
-            modifier = Modifier.height(26.dp),
-        )
-
-        /*
-         * APPEARANCE
-         */
-        SettingsSectionTitle(
-            title = "APPEARANCE",
-        )
-
-        Spacer(
-            modifier = Modifier.height(12.dp),
-        )
-
+        SettingsSectionTitle("PREFERENCES")
         SettingsCard {
-
-            SettingsRow(
-                icon = Icons.Rounded.LightMode,
-                title = "Theme",
-                subtitle = themeSubtitle(
-                    uiState.selectedTheme,
-                ),
-                onClick = {
-                    showThemeSheet = true
-                },
-            )
+            SettingsRow(Icons.Rounded.LightMode, "Appearance", themeSubtitle(uiState.selectedTheme)) { showThemeSheet = true }
+            HorizontalDivider(Modifier.padding(start = 72.dp), color = MaterialTheme.colorScheme.outlineVariant)
+            SettingsRow(Icons.Rounded.Language, "Language preference", uiState.selectedLanguage.displayName) { showLanguageSheet = true }
         }
-
-        Spacer(
-            modifier = Modifier.height(26.dp),
-        )
-
-        /*
-         * PRIVACY
-         */
-        SettingsSectionTitle(
-            title = "PRIVACY",
-        )
-
-        Spacer(
-            modifier = Modifier.height(12.dp),
-        )
-
+        SettingsSectionTitle("PRIVACY & ACCESS")
         SettingsCard {
-
-            SettingsRow(
-                icon = Icons.Rounded.Shield,
-                title = "Privacy Policy",
-                subtitle = null,
-                onClick = onPrivacyPolicyClick,
-            )
-
-            HorizontalDivider(
-                modifier = Modifier.padding(
-                    start = 70.dp,
-                    end = 16.dp,
-                ),
-                color = MaterialTheme.colorScheme
-                    .outlineVariant
-                    .copy(alpha = 0.7f),
-            )
-
-            SettingsRow(
-                icon = Icons.Rounded.Lock,
-                title = "Permissions",
-                subtitle = null,
-                onClick = onPermissionsClick,
-            )
+            SettingsRow(Icons.Rounded.Lock, "Media permissions", "Manage the photos and videos this app can read", onPermissionsClick)
+            HorizontalDivider(Modifier.padding(start = 72.dp), color = MaterialTheme.colorScheme.outlineVariant)
+            SettingsRow(Icons.Rounded.Shield, "Your data", "How scanning, recovery and export use your files") { showPrivacy = true }
         }
-
-        Spacer(
-            modifier = Modifier.height(26.dp),
-        )
-
-        /*
-         * APP
-         */
-        SettingsSectionTitle(
-            title = "APP",
-        )
-
-        Spacer(
-            modifier = Modifier.height(12.dp),
-        )
-
+        SettingsSectionTitle("HELP")
         SettingsCard {
-
-            SettingsRow(
-                icon = Icons.Rounded.HeadsetMic,
-                title = "Contact Support",
-                subtitle = null,
-                onClick = {
-                    showContactSupportSheet = true
-                },
-            )
+            SettingsRow(Icons.Rounded.HeadsetMic, "Contact support", "Get help with scanning or recovery") { showContactSupportSheet = true }
         }
-
-        Spacer(
-            modifier = Modifier.height(28.dp),
-        )
+        Text("File Recovery · ${BuildConfig.VERSION_NAME}" + if (BuildConfig.DEBUG) " · Debug" else "",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(vertical = 8.dp))
     }
+    if (showPrivacy) AlertDialog(
+        onDismissRequest = { showPrivacy = false },
+        title = { Text("Your data") },
+        text = { Text("Scans read media that Android permits this app to access. Scan results and saved-file history are stored locally. Recovery and repair create new copies; source files are preserved.\n\nCloud export sends files only to the destination you select. Google Play handles payment, and purchase tokens are sent to the configured verification service to check Premium access.\n\nYou can change media access in Permissions. Android does not allow this app to read erased sectors or other apps’ private storage.") },
+        confirmButton = { TextButton(onClick = { showPrivacy = false }) { Text("Done") } },
+    )
 
     /*
      * LANGUAGE BOTTOM SHEET
@@ -357,7 +243,7 @@ private fun SettingsCard(
             width = 1.dp,
             color = MaterialTheme.colorScheme.outlineVariant,
         ),
-        shadowElevation = 1.dp,
+        shadowElevation = 0.dp,
     ) {
 
         Column(
@@ -533,7 +419,7 @@ private fun LanguageBottomSheet(
             )
 
             Text(
-                text = "Select your preferred language.",
+                text = "Save your language preference. The current interface is available in English.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 13.sp,
             )
@@ -896,7 +782,7 @@ private fun ContactSupportBottomSheet(
      */
     val whatsappNumber = "923288562830"
 
-    val whatsappDisplayNumber = "+92 370 3584028"
+    val whatsappDisplayNumber = "+" + whatsappNumber
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,

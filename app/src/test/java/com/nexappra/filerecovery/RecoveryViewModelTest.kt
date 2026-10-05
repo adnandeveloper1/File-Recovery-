@@ -25,7 +25,7 @@ class RecoveryViewModelTest {
         var category: RecoveryCategory? = null
         var fail = false
         val photo = RecoverableFile("photo", "content://test/photo", "photo.jpg", "image/jpeg", 24, 0, null, RecoveryFileType.Photo, emptySet(), false, null, false, null)
-        val session = RecoveryScanSession("session", RecoveryScanMode.Quick, durationMillis = 10, totalBytesScanned = 24, files = listOf(photo), locations = emptyList(), completedAtMillis = 0)
+        var session = RecoveryScanSession("session", RecoveryScanMode.Quick, durationMillis = 10, totalBytesScanned = 24, files = listOf(photo), locations = emptyList(), completedAtMillis = 0)
         override suspend fun performFullDeviceScan(selectedCategory: RecoveryCategory?, mode: RecoveryScanMode, onSnapshot: suspend (RecoveryScanSnapshot) -> Unit): RecoveryScanSession {
             scans++; category = selectedCategory; return session
         }
@@ -76,5 +76,33 @@ class RecoveryViewModelTest {
         repo.fail = false; vm.recoverSelectedTo("content://folder"); runCurrent()
         assertTrue(vm.uiState.value.selectedIds.isEmpty())
         assertEquals(2, repo.copies)
+    }
+
+    @Test fun largeSelectionUsesCompactStateAndRestoresAfterProcessRecreation() = runTest(dispatcher) {
+        val repo = Repository()
+        repo.session = repo.session.copy(files = (0 until 10_000).map { index ->
+            repo.photo.copy(id = "content://test/" + "long-folder-name/".repeat(15) + index, dateModifiedMillis = index.toLong())
+        })
+        val state = SavedStateHandle(mapOf(AppDestination.FullRecoveryResults.ArgSessionId to "session"))
+        val vm = FullRecoveryResultsViewModel(state, repo, Premium(true))
+        runCurrent(); vm.selectVisible()
+        assertEquals(10_000, vm.uiState.value.selectedIds.size)
+        assertNull(state.get<ArrayList<String>>("selected_ids"))
+        val indices = checkNotNull(state.get<IntArray>("selected_indices"))
+        assertEquals(40_000, indices.size * Int.SIZE_BYTES)
+        val recreatedState = SavedStateHandle(mapOf(AppDestination.FullRecoveryResults.ArgSessionId to "session", "selected_indices" to indices))
+        val restored = FullRecoveryResultsViewModel(recreatedState, repo, Premium(true))
+        runCurrent()
+        assertEquals(vm.uiState.value.selectedIds, restored.uiState.value.selectedIds)
+    }
+
+    @Test fun pickerResultCanRestoreCompactSelectionBeforeUiLoad() = runTest(dispatcher) {
+        val repo = Repository()
+        val state = SavedStateHandle(mapOf(AppDestination.FullRecoveryResults.ArgSessionId to "session", "selected_indices" to intArrayOf(0)))
+        val vm = FullRecoveryResultsViewModel(state, repo, Premium(true))
+        vm.recoverSelectedTo("content://folder")
+        runCurrent()
+        assertEquals(1, repo.copies)
+        assertTrue(vm.uiState.value.selectedIds.isEmpty())
     }
 }

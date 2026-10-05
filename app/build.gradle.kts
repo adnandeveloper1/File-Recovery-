@@ -14,7 +14,7 @@ android {
     defaultConfig {
         applicationId = "com.nexappra.filerecovery"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0"
         fun billingString(name: String, fallback: String = "") {

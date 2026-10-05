@@ -121,7 +121,7 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
                     stage(RecoveryScanLocationType.AccessibleStorage) {
                         if (Build.VERSION.SDK_INT < 29 || (Build.VERSION.SDK_INT >= 30 && Environment.isExternalStorageManager())) {
                             scanDirectories(policy, ::record)
-                        } else if (resolver.persistedUriPermissions.none { it.isReadPermission }) {
+                        } else if (resolver.persistedUriPermissions.none { it.isReadPermission && DocumentsContract.isTreeUri(it.uri) }) {
                             warnings += "For a deeper search, choose a folder before scanning. Private app storage and erased sectors are not accessible on this device."
                         }
                     }
@@ -129,9 +129,9 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
                 true
             } ?: false
             if (!completed) { partial = true; warnings += "The scan reached its time limit. Found files are ready; scan a specific folder for more results." }
+            try { store.save(session()) } catch (_: java.io.IOException) { warnings += "Results are available now but could not be kept after closing the app." }
             val result = session()
             sessions[id] = result
-            try { store.save(result) } catch (_: java.io.IOException) { warnings += "Results are available now but could not be kept after closing the app." }
             sessions.keys.filter { it != id }.take((sessions.size - 3).coerceAtLeast(0)).forEach(sessions::remove)
             publish(force = true, complete = true)
             result
@@ -200,13 +200,14 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
                     } else {
                         val uri = DocumentsContract.buildDocumentUriUsingTree(tree, id)
                         val known = MediaScanPolicy.classify(name, mime)
-                        val inferred = if (known == null && policy.shouldReadHeader(name) &&
-                            (mime.isNullOrBlank() || mime == "application/octet-stream")) {
-                            try { resolver.openInputStream(uri)?.use { FileSignatureDetector.detect(it) } }
+                        // DocumentsProvider maps .cache to chemical/x-cache based on the suffix.
+                        // Confirm ambiguous cache content using its bytes instead of rejecting it.
+                        val inferred = if (known == null && policy.shouldReadHeader(name, mime)) {
+                            try { resolver.openInputStream(uri)?.use { FileSignatureDetector.inspect(it) } }
                             catch (_: java.io.IOException) { null } catch (_: SecurityException) { null }
                         } else null
-                        val type = known ?: inferred
-                        if (type != null && type in policy.types) record(mediaFile(uri, name, mime, c.getLong(3), c.getLong(4), parent,
+                        val type = known ?: inferred?.type
+                        if (type != null && type in policy.types) record(mediaFile(uri, name, inferred?.mimeType ?: mime, c.getLong(3), c.getLong(4), parent,
                             type, "folder", false, fromFolder = true))
                     }
                 }
@@ -235,9 +236,11 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
                 if (!file.canonicalPath.startsWith(rootPrefix)) return@forEach
                 if (file.isDirectory) { queue.add(file to depth + 1); return@forEach }
                 if (!file.isFile || file.length() <= 0L || file.name == ".nomedia") return@forEach
-                val type = MediaScanPolicy.classify(file.name, null) ?: if (policy.shouldReadHeader(file.name)) FileSignatureDetector.detect(file) else null
+                val known = MediaScanPolicy.classify(file.name, null)
+                val inferred = if (known == null && policy.shouldReadHeader(file.name)) FileSignatureDetector.inspect(file) else null
+                val type = known ?: inferred?.type
                 if (type !in policy.types || type == null) return@forEach
-                record(mediaFile(Uri.fromFile(file), file.name, null, file.length(), file.lastModified(),
+                record(mediaFile(Uri.fromFile(file), file.name, inferred?.mimeType, file.length(), file.lastModified(),
                     file.parentFile!!.relativeTo(storageRoot).path, type, "external_primary", false))
             }
         }

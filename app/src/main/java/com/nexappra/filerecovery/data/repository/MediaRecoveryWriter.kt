@@ -7,6 +7,8 @@ import android.graphics.ImageDecoder
 import android.graphics.Matrix
 import android.net.Uri
 import android.os.Build
+import android.provider.DocumentsContract
+import android.webkit.MimeTypeMap
 import androidx.documentfile.provider.DocumentFile
 import androidx.exifinterface.media.ExifInterface
 import com.nexappra.filerecovery.domain.model.*
@@ -38,30 +40,35 @@ class MediaRecoveryWriter @Inject constructor(
         check(destination.canWrite()) { "This folder is read-only. Choose another folder." }
         var copied = 0
         var skipped = 0
-        for (file in files) {
-            coroutineContext.ensureActive()
-            premium.requirePremium()
-            var created: DocumentFile? = null
-            try {
-                resolver.openInputStream(Uri.parse(file.uriString))?.use { input ->
-                    // A short random suffix prevents collisions without repeated directory listings.
-                    val safe = MediaScanPolicy.safeFileName(file.displayName)
-                    val dot = safe.lastIndexOf('.').takeIf { it > 0 } ?: safe.length
-                    val name = safe.take(dot) + "_recovered_" + UUID.randomUUID().toString().take(8) + safe.drop(dot)
-                    created = destination.createFile(file.mimeType ?: defaultMime(file), name) ?: throw IOException("Cannot create a file here.")
-                    resolver.openOutputStream(created!!.uri, "w")?.use { copyChecked(input, it, file.sizeBytes) }
-                        ?: throw IOException("Cannot write to this folder.")
-                } ?: throw IOException("The source is no longer available.")
-                copied++
-            } catch (cancelled: CancellationException) {
-                created?.delete()
-                throw cancelled
-            } catch (_: Exception) {
-                created?.delete()
-                skipped++
+        try {
+            for (file in files) {
+                coroutineContext.ensureActive()
+                premium.requirePremium()
+                var created: DocumentFile? = null
+                try {
+                    resolver.openInputStream(Uri.parse(file.uriString))?.use { input ->
+                        // Give header-detected cache copies an extension usable by gallery apps.
+                        val safe = recoveryName(file)
+                        val dot = safe.lastIndexOf('.').takeIf { it > 0 } ?: safe.length
+                        val name = safe.take(dot) + "_recovered_" + UUID.randomUUID().toString().take(8) + safe.drop(dot)
+                        created = destination.createFile(file.mimeType ?: defaultMime(file), name) ?: throw IOException("Cannot create a file here.")
+                        resolver.openOutputStream(created!!.uri, "w")?.use { copyChecked(input, it, file.sizeBytes) }
+                            ?: throw IOException("Cannot write to this folder.")
+                    } ?: throw IOException("The source is no longer available.")
+                    coroutineContext.ensureActive()
+                    copied++
+                } catch (cancelled: CancellationException) {
+                    runCatching { created?.delete() }
+                    throw cancelled
+                } catch (_: Exception) {
+                    runCatching { created?.delete() }
+                    skipped++
+                }
             }
+        } finally {
+            // Completed copies survive cancellation or entitlement expiry during the next file.
+            withContext(NonCancellable) { recordHistory(copied, tree, "Original files") }
         }
-        recordHistory(copied, tree, "Original files")
         RecoveryCopyResult(copied, skipped)
     }
 
@@ -69,6 +76,7 @@ class MediaRecoveryWriter @Inject constructor(
         premium.requirePremium()
         val files = selected(session, ids)
         val destination = destinationUri(document)
+        requireSeparateDestination(files, destination)
         var copied = 0
         var skipped = 0
         try {
@@ -80,7 +88,7 @@ class MediaRecoveryWriter @Inject constructor(
                     val input = try { resolver.openInputStream(Uri.parse(file.uriString)) } catch (_: IOException) { null } catch (_: SecurityException) { null }
                     if (input == null) { skipped++; return@forEachIndexed }
                     input.use {
-                        archive.putNextEntry(ZipEntry("${index + 1}_${MediaScanPolicy.safeFileName(file.displayName)}"))
+                        archive.putNextEntry(ZipEntry("${index + 1}_${recoveryName(file)}"))
                         copyChecked(it, archive, file.sizeBytes)
                         archive.closeEntry()
                         copied++
@@ -92,7 +100,7 @@ class MediaRecoveryWriter @Inject constructor(
             runCatching { resolver.delete(destination, null, null) }
             throw error
         }
-        recordHistory(copied, document, "Cloud / ZIP export")
+        withContext(NonCancellable) { recordHistory(copied, document, "Cloud / ZIP export") }
         RecoveryCopyResult(copied, skipped)
     }
 
@@ -102,6 +110,7 @@ class MediaRecoveryWriter @Inject constructor(
         val file = selected(session, setOf(id)).single()
         require(file.fileType == RecoveryFileType.Photo) { "Image repair supports photos only." }
         val destination = destinationUri(document)
+        requireSeparateDestination(listOf(file), destination)
         var bitmap: Bitmap? = null
         try {
             val sourceUri = Uri.parse(file.uriString)
@@ -138,16 +147,18 @@ class MediaRecoveryWriter @Inject constructor(
                 if (!matrix.isIdentity) bitmap = Bitmap.createBitmap(decoded, 0, 0, decoded.width, decoded.height, matrix, true).also { if (it !== decoded) decoded.recycle() }
             }
             coroutineContext.ensureActive()
+            premium.requirePremium()
             val image = checkNotNull(bitmap)
             check(image.width > 0 && image.height > 0) { "This image has no readable pixels." }
             resolver.openOutputStream(destination, "w")?.use { output ->
                 check(image.compress(Bitmap.CompressFormat.PNG, 100, output)) { "Unable to write the repair copy." }
             } ?: throw IOException("Unable to write the repair copy.")
+            coroutineContext.ensureActive()
         } catch (error: Exception) {
             runCatching { resolver.delete(destination, null, null) }
             throw error
         } finally { bitmap?.recycle() }
-        recordHistory(1, document, "Repaired PNG copy")
+        withContext(NonCancellable) { recordHistory(1, document, "Repaired PNG copy") }
         RecoveryCopyResult(1, 0)
     }
 
@@ -172,6 +183,21 @@ class MediaRecoveryWriter @Inject constructor(
     }
 
     private fun destinationUri(value: String): Uri = Uri.parse(value).also { require(it.scheme == "content") { "Choose a destination through the system file picker." } }
+    private fun requireSeparateDestination(files: List<RecoverableFile>, destination: Uri) {
+        fun documentId(uri: Uri) = runCatching { DocumentsContract.getDocumentId(uri) }.getOrNull()
+        require(files.none { file ->
+            val source = Uri.parse(file.uriString)
+            source == destination || (source.authority == destination.authority &&
+                documentId(source)?.let { it == documentId(destination) } == true)
+        }) { "Choose a new destination to preserve the source file." }
+    }
+    private fun recoveryName(file: RecoverableFile): String {
+        val safe = MediaScanPolicy.safeFileName(file.displayName)
+        val extension = file.mimeType?.let { MimeTypeMap.getSingleton().getExtensionFromMimeType(it) }
+        return if (MediaScanPolicy().shouldReadHeader(safe) && extension != null) {
+            safe.substringBeforeLast('.', safe) + "." + extension
+        } else safe
+    }
     private fun defaultMime(file: RecoverableFile) = if (file.fileType == RecoveryFileType.Photo) "image/jpeg" else "video/mp4"
     private suspend fun recordHistory(count: Int, destination: String, kind: String) {
         try { history.record(count, destination, kind) }
