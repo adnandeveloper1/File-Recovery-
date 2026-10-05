@@ -5,12 +5,13 @@ import java.util.Locale
 /** Shared by indexed queries, folder traversal and the final result boundary. */
 data class MediaScanPolicy(val category: RecoveryCategory? = null) {
     init {
-        require(category == null || category == RecoveryCategory.Photos || category == RecoveryCategory.Videos)
+        require(category == null || category == RecoveryCategory.Photos || category == RecoveryCategory.Videos || category == RecoveryCategory.Audio)
     }
 
     val types: Set<RecoveryFileType> = when (category) {
         RecoveryCategory.Photos -> setOf(RecoveryFileType.Photo)
         RecoveryCategory.Videos -> setOf(RecoveryFileType.Video)
+        RecoveryCategory.Audio -> setOf(RecoveryFileType.Audio)
         else -> setOf(RecoveryFileType.Photo, RecoveryFileType.Video)
     }
 
@@ -26,16 +27,19 @@ data class MediaScanPolicy(val category: RecoveryCategory? = null) {
     companion object {
         val imageExtensions = setOf("jpg", "jpeg", "png", "webp", "gif", "bmp", "heic", "heif", "avif", "dng", "tif", "tiff")
         val videoExtensions = setOf("mp4", "m4v", "mkv", "3gp", "3gpp", "webm", "mov", "avi", "mpeg", "mpg", "ts")
+        val audioExtensions = setOf("mp3", "m4a", "aac", "wav", "flac", "ogg", "opus", "amr", "mid", "midi", "wma")
 
         fun classify(name: String, mime: String?): RecoveryFileType? {
             val normalized = mime?.substringBefore(';')?.trim()?.lowercase(Locale.ROOT)
             if (normalized?.startsWith("image/") == true) return RecoveryFileType.Photo
             if (normalized?.startsWith("video/") == true) return RecoveryFileType.Video
+            if (normalized?.startsWith("audio/") == true) return RecoveryFileType.Audio
             // A known non-visual MIME must never be disguised by a filename extension.
             if (!normalized.isNullOrBlank() && normalized !in setOf("application/octet-stream", "application/unknown")) return null
             return when (name.substringAfterLast('.', "").lowercase(Locale.ROOT)) {
                 in imageExtensions -> RecoveryFileType.Photo
                 in videoExtensions -> RecoveryFileType.Video
+                in audioExtensions -> RecoveryFileType.Audio
                 else -> null
             }
         }

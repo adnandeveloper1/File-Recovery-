@@ -42,7 +42,8 @@ data class FullDeviceScanUiState(
             accessLevel == DeviceScanAccessLevel.LimitedAccess
 
     val canStartFullDeviceScan: Boolean
-        get() = permissions.canStartFullDeviceScan
+        get() = if (mode == com.nexappra.filerecovery.domain.model.RecoveryScanMode.Deep) hasAuthorizedFolders
+        else permissions.canStartFullDeviceScan
 }
 
 fun defaultRecoveryLocationStates(): List<RecoveryScanLocationState> = RecoveryScanLocationType.entries

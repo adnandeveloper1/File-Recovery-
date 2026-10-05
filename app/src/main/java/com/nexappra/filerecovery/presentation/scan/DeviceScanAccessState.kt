@@ -21,7 +21,7 @@ data class DeviceScanPermissions(
         get() = legacyReadAccess || allFilesAccess || (fullImagesAccess && fullVideosAccess)
 
     val hasAnyDeclaredAccess: Boolean
-        get() = legacyReadAccess || allFilesAccess || fullImagesAccess || fullVideosAccess || partialVisualAccess || safFolderCount > 0
+        get() = legacyReadAccess || allFilesAccess || fullImagesAccess || fullVideosAccess || audioAccess || partialVisualAccess || safFolderCount > 0
 
     val canStartFullDeviceScan: Boolean
         get() = hasAnyDeclaredAccess

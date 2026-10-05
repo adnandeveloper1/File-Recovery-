@@ -37,6 +37,13 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
     private val resolver get() = context.contentResolver
     private val queryExecutor = Executors.newFixedThreadPool(2) { task -> Thread(task, "MediaQuery").apply { isDaemon = true } }
 
+    private fun locationFor(type: RecoveryFileType) = when (type) {
+        RecoveryFileType.Photo -> RecoveryScanLocationType.MediaStoreImages
+        RecoveryFileType.Video -> RecoveryScanLocationType.MediaStoreVideos
+        RecoveryFileType.Audio -> RecoveryScanLocationType.MediaStoreAudio
+        else -> error("Unsupported media type: $type")
+    }
+
     override suspend fun performFullDeviceScan(
         selectedCategory: RecoveryCategory?,
         mode: RecoveryScanMode,
@@ -48,7 +55,7 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
         val started = SystemClock.elapsedRealtime()
         val files = LinkedHashMap<String, RecoverableFile>()
         val warnings = linkedSetOf<String>()
-        val stages = policy.types.map { if (it == RecoveryFileType.Photo) RecoveryScanLocationType.MediaStoreImages else RecoveryScanLocationType.MediaStoreVideos } +
+        val stages = policy.types.map { locationFor(it) } +
             if (mode == RecoveryScanMode.Deep) listOf(RecoveryScanLocationType.AuthorizedFolders, RecoveryScanLocationType.AccessibleStorage) else emptyList()
         var locations = stages.map { RecoveryScanLocationState(it) }
         var currentStage = stages.first()
@@ -67,7 +74,8 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
             sessions[id] = session()
             val counts = mapOf(RecoveryResultFilter.All to files.size,
                 RecoveryResultFilter.Photos to files.values.count { it.fileType == RecoveryFileType.Photo },
-                RecoveryResultFilter.Videos to files.values.count { it.fileType == RecoveryFileType.Video })
+                RecoveryResultFilter.Videos to files.values.count { it.fileType == RecoveryFileType.Video },
+                RecoveryResultFilter.Audio to files.values.count { it.fileType == RecoveryFileType.Audio })
             onSnapshot(RecoveryScanSnapshot(mode, selectedCategory,
                 if (complete) { if (files.isEmpty()) RecoveryScanStatus.CompletedEmpty else RecoveryScanStatus.Completed } else RecoveryScanStatus.Scanning,
                 if (complete) 1f else null, inspected, files.size,
@@ -104,12 +112,12 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
             publish(force = true)
             val completed = withTimeoutOrNull(if (mode == RecoveryScanMode.Deep) 120_000L else 20_000L) {
                 policy.types.forEach { type ->
-                    stage(if (type == RecoveryFileType.Photo) RecoveryScanLocationType.MediaStoreImages else RecoveryScanLocationType.MediaStoreVideos) {
+                    stage(locationFor(type)) {
                         val volumes = if (Build.VERSION.SDK_INT >= 29) MediaStore.getExternalVolumeNames(context).toList() else listOf("external")
                         volumes.forEach { volume ->
                             try { scanMediaCollection(volume, type, policy, ::record) }
                             catch (cancelled: CancellationException) { throw cancelled }
-                            catch (_: SecurityException) { warnings += "Access to some media is limited. You can change the selected photos and videos in app permissions." }
+                            catch (_: SecurityException) { warnings += "Access to some media is limited. You can change category access in app permissions." }
                         }
                     }
                 }
@@ -145,11 +153,17 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
     }
 
     private suspend fun scanMediaCollection(volume: String, type: RecoveryFileType, policy: MediaScanPolicy, record: suspend (RecoverableFile) -> Unit) {
-        val uri = if (type == RecoveryFileType.Photo) MediaStore.Images.Media.getContentUri(volume) else MediaStore.Video.Media.getContentUri(volume)
+        val uri = when (type) {
+            RecoveryFileType.Photo -> MediaStore.Images.Media.getContentUri(volume)
+            RecoveryFileType.Video -> MediaStore.Video.Media.getContentUri(volume)
+            RecoveryFileType.Audio -> MediaStore.Audio.Media.getContentUri(volume)
+            else -> error("Unsupported media type: $type")
+        }
         val pathColumn = if (Build.VERSION.SDK_INT >= 29) MediaStore.MediaColumns.RELATIVE_PATH else MediaStore.MediaColumns.DATA
         val projection = mutableListOf("_id", "_display_name", "mime_type", "_size", "date_modified", pathColumn)
         if (Build.VERSION.SDK_INT >= 30) projection += MediaStore.MediaColumns.IS_TRASHED
         if (type == RecoveryFileType.Video) projection += MediaStore.Video.VideoColumns.DURATION
+        if (type == RecoveryFileType.Audio) projection += MediaStore.Audio.AudioColumns.DURATION
         val args = Bundle().apply {
             putString(ContentResolver.QUERY_ARG_SQL_SELECTION, "${MediaStore.MediaColumns.SIZE} > 0")
             putString(ContentResolver.QUERY_ARG_SQL_SORT_ORDER, "${MediaStore.MediaColumns.DATE_MODIFIED} DESC")
@@ -221,6 +235,7 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
             addAll(listOf("DCIM", "Download", "Android/media", ".Trash", ".trash"))
             if (RecoveryFileType.Photo in policy.types) add("Pictures")
             if (RecoveryFileType.Video in policy.types) add("Movies")
+            if (RecoveryFileType.Audio in policy.types) add("Music")
         }
         val queue = ArrayDeque<Pair<File, Int>>()
         names.forEach { queue.add(File(storageRoot, it) to 0) }

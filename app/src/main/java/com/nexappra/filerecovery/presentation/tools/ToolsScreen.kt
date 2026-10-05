@@ -15,7 +15,7 @@ fun ToolsScreen(onDeepScan: () -> Unit = {}, onScan: () -> Unit = {}, modifier: 
     LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item { FlowHeader("Recovery tools", "More ways to save your media") }
         item { FlowPanel {
-            FeatureLine(Icons.Rounded.ManageSearch, "Deep scan", "Choose an accessible folder and search for photos, videos and readable cache copies. Premium required.")
+            FeatureLine(Icons.Rounded.ManageSearch, "Deep scan", "Choose an accessible folder and search for photos, videos, audio and readable cache copies. Premium required.")
             Button(onClick = onDeepScan) { Text("Open deep scan") }
         } }
         item { FlowPanel {

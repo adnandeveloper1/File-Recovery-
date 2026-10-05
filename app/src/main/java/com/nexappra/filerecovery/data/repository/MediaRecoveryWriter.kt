@@ -163,8 +163,8 @@ class MediaRecoveryWriter @Inject constructor(
     }
 
     private fun selected(session: RecoveryScanSession, ids: Set<String>): List<RecoverableFile> {
-        require(ids.isNotEmpty()) { "Select at least one photo or video." }
-        val files = session.files.filter { it.id in ids && it.fileType in setOf(RecoveryFileType.Photo, RecoveryFileType.Video) }
+        require(ids.isNotEmpty()) { "Select at least one photo, video or audio file." }
+        val files = session.files.filter { it.id in ids && it.fileType in setOf(RecoveryFileType.Photo, RecoveryFileType.Video, RecoveryFileType.Audio) }
         require(files.size == ids.size) { "Some selected files no longer belong to this scan." }
         return files
     }
@@ -198,7 +198,11 @@ class MediaRecoveryWriter @Inject constructor(
             safe.substringBeforeLast('.', safe) + "." + extension
         } else safe
     }
-    private fun defaultMime(file: RecoverableFile) = if (file.fileType == RecoveryFileType.Photo) "image/jpeg" else "video/mp4"
+    private fun defaultMime(file: RecoverableFile) = when (file.fileType) {
+        RecoveryFileType.Photo -> "image/jpeg"
+        RecoveryFileType.Audio -> "audio/mpeg"
+        else -> "video/mp4"
+    }
     private suspend fun recordHistory(count: Int, destination: String, kind: String) {
         try { history.record(count, destination, kind) }
         catch (cancelled: CancellationException) { throw cancelled }

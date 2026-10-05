@@ -51,7 +51,7 @@ class FullRecoveryResultsViewModel @Inject constructor(
     }
 
     fun onFilterSelected(filter: RecoveryResultFilter) {
-        if (filter !in setOf(RecoveryResultFilter.All, RecoveryResultFilter.Photos, RecoveryResultFilter.Videos)) return
+        if (filter !in setOf(RecoveryResultFilter.All, RecoveryResultFilter.Photos, RecoveryResultFilter.Videos, RecoveryResultFilter.Audio)) return
         mutableState.update { it.copy(selectedFilter = filter) }
         filterResults()
     }
@@ -74,7 +74,7 @@ class FullRecoveryResultsViewModel @Inject constructor(
         mutableState.update { it.copy(selectedIds = ids, selectedTotalSizeBytes = it.allFiles.filter { f -> f.id in ids }.sumOf { f -> f.sizeBytes }) }
     }
     private fun orderedFiles(session: RecoveryScanSession) = session.files
-        .filter { it.fileType in setOf(RecoveryFileType.Photo, RecoveryFileType.Video) }.sortedByDescending { it.dateModifiedMillis }
+        .filter { it.fileType in setOf(RecoveryFileType.Photo, RecoveryFileType.Video, RecoveryFileType.Audio) }.sortedByDescending { it.dateModifiedMillis }
 
     private fun restoredSelection(files: List<RecoverableFile>): Set<String> {
         val indices = savedStateHandle.get<IntArray>("selected_indices")
@@ -85,7 +85,8 @@ class FullRecoveryResultsViewModel @Inject constructor(
         mutableState.update { state -> state.copy(visibleFiles = state.allFiles.filter { file ->
             (state.selectedFilter == RecoveryResultFilter.All ||
                 (state.selectedFilter == RecoveryResultFilter.Photos && file.fileType == RecoveryFileType.Photo) ||
-                (state.selectedFilter == RecoveryResultFilter.Videos && file.fileType == RecoveryFileType.Video)) &&
+                (state.selectedFilter == RecoveryResultFilter.Videos && file.fileType == RecoveryFileType.Video) ||
+                (state.selectedFilter == RecoveryResultFilter.Audio && file.fileType == RecoveryFileType.Audio)) &&
                 file.displayName.contains(state.searchQuery.trim(), ignoreCase = true)
         }) }
     }

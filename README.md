@@ -1,14 +1,14 @@
 # File Recovery
 
-Android photo and video discovery, preview and recovery-copy app built with Kotlin, Jetpack Compose, Hilt, coroutines and StateFlow. Existing theme preferences and the single-activity architecture are preserved.
+Android photo, video and audio discovery, preview and recovery-copy app built with Kotlin, Jetpack Compose, Hilt, coroutines and StateFlow. Existing theme preferences and the single-activity architecture are preserved.
 
 ## App flow
 
-Home offers **Photos**, **Videos** and a combined **Quick scan**. Photos query only image collections; Videos query only video collections. Audio, documents and archives are excluded at classification and result boundaries. Quick scan queries MediaStore metadata without recursively walking shared storage or opening every file.
+Home offers separate **Photos**, **Videos** and **Audio** scans plus a combined **Quick scan**. Each category queries only its matching MediaStore collection and file types. Documents and archives are excluded. The combined quick scan checks photos and videos. Scans query MediaStore metadata without recursively walking shared storage or opening every file.
 
 Results appear during scanning. Quick scan has a 20-second work budget; Deep scan has a 120-second budget. Users can stop early and retain partial results. Provider queries have cancellation signals. Completed and partial sessions are cached (latest three) so results survive process recreation while cache/source access remains available.
 
-Free users can scan and inspect standard previews. Saving files, deep folder searches, detailed image previews/video playback, repair copies and cloud export require verified Premium. Every write is gated again in the repository, independently of the UI.
+Free users can scan and inspect standard photo/video previews and play audio previews. Saving files, deep folder searches, detailed image previews/video playback, repair copies and cloud export require verified Premium. Every write is gated again in the repository, independently of the UI.
 
 - **Recovery:** original-byte copies to a user-chosen writable folder, unique destination names, cancellation checks and failed-copy cleanup.
 - **Deep scan:** accessible selected folders plus permitted shared media locations. Known non-media files are skipped; ambiguous cache names can be checked using small headers.

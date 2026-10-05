@@ -136,9 +136,9 @@ fun SettingsScreen(
         }
         SettingsSectionTitle("PRIVACY & ACCESS")
         SettingsCard {
-            SettingsRow(Icons.Rounded.Lock, "Media permissions", "Manage the photos and videos this app can read", onPermissionsClick)
+            SettingsRow(Icons.Rounded.Lock, "Media permissions", "Manage photo, video and audio access", onPermissionsClick)
             HorizontalDivider(Modifier.padding(start = 72.dp), color = MaterialTheme.colorScheme.outlineVariant)
-            SettingsRow(Icons.Rounded.Shield, "Your data", "How scanning, recovery and export use your files") { showPrivacy = true }
+            SettingsRow(Icons.Rounded.Shield, "Privacy policy", "Files, cloud export, purchases and your data choices") { showPrivacy = true }
         }
         SettingsSectionTitle("HELP")
         SettingsCard {
@@ -148,12 +148,7 @@ fun SettingsScreen(
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(vertical = 8.dp))
     }
-    if (showPrivacy) AlertDialog(
-        onDismissRequest = { showPrivacy = false },
-        title = { Text("Your data") },
-        text = { Text("Scans read media that Android permits this app to access. Scan results and saved-file history are stored locally. Recovery and repair create new copies; source files are preserved.\n\nCloud export sends files only to the destination you select. Google Play handles payment, and purchase tokens are sent to the configured verification service to check Premium access.\n\nYou can change media access in Permissions. Android does not allow this app to read erased sectors or other apps’ private storage.") },
-        confirmButton = { TextButton(onClick = { showPrivacy = false }) { Text("Done") } },
-    )
+    if (showPrivacy) PrivacyPolicyDialog(onClose = { showPrivacy = false })
 
     /*
      * LANGUAGE BOTTOM SHEET

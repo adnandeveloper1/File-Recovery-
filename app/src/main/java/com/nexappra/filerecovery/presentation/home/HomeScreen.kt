@@ -35,7 +35,7 @@ fun HomeScreen(uiState: HomeUiState, onCategoryClick: (RecoveryCategory) -> Unit
     onPremiumClick: () -> Unit, onRetryStorage: () -> Unit, modifier: Modifier = Modifier, onDeepScan: () -> Unit = onPremiumClick) {
     LazyColumn(modifier.fillMaxSize(), contentPadding = PaddingValues(22.dp), verticalArrangement = Arrangement.spacedBy(22.dp)) {
         item {
-            FlowHeader("File Recovery", "Photos & videos") {
+            FlowHeader("File Recovery", "Photos, videos & audio") {
                 FilledTonalButton(onClick = onPremiumClick, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)) {
                     Icon(Icons.Rounded.WorkspacePremium, null, Modifier.size(18.dp)); Spacer(Modifier.width(5.dp))
                     Text(if (uiState.isPremium) "Plus" else "Get Plus", style = MaterialTheme.typography.labelMedium)
@@ -46,10 +46,10 @@ fun HomeScreen(uiState: HomeUiState, onCategoryClick: (RecoveryCategory) -> Unit
             Column(Modifier.fillMaxWidth().recoveryHero().padding(26.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Icon(Icons.Rounded.Radar, null, tint = RecoveryMint, modifier = Modifier.size(22.dp))
-                    Text("PHOTO & VIDEO RECOVERY", fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, color = RecoveryMint)
+                    Text("PHOTO, VIDEO & AUDIO RECOVERY", fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, color = RecoveryMint)
                 }
-                Text("Find your photos.\nSave your videos.", fontSize = 31.sp, lineHeight = 36.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                Text("A focused search for your photos and videos. Preview what is available as we find it.", color = Color(0xFFDCE8FA), style = MaterialTheme.typography.bodyMedium)
+                Text("Find your media.\nSave what matters.", fontSize = 31.sp, lineHeight = 36.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                Text("Scan photos, videos or audio separately. Preview what is available as we find it.", color = Color(0xFFDCE8FA), style = MaterialTheme.typography.bodyMedium)
                 Button(onClick = onScanClick, modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp), shape = RoundedCornerShape(16.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = RecoveryMint, contentColor = RecoveryInk)) {
                     Text("Quick scan", fontWeight = FontWeight.Bold); Spacer(Modifier.weight(1f)); Icon(Icons.AutoMirrored.Rounded.ArrowForward, null)
@@ -64,6 +64,16 @@ fun HomeScreen(uiState: HomeUiState, onCategoryClick: (RecoveryCategory) -> Unit
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 CategoryTile("Photos", "JPG, PNG, HEIC + more", Icons.Rounded.PhotoLibrary, Color(0xFFDBEAFE), Modifier.weight(1f)) { onCategoryClick(RecoveryCategory.Photos) }
                 CategoryTile("Videos", "MP4, MOV, MKV + more", Icons.Rounded.VideoLibrary, Color(0xFFEDE7F9), Modifier.weight(1f)) { onCategoryClick(RecoveryCategory.Videos) }
+            }
+            FlowPanel(Modifier.fillMaxWidth().clickable { onCategoryClick(RecoveryCategory.Audio) }) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Icon(Icons.Rounded.Audiotrack, "Audio", tint = RecoveryInk, modifier = Modifier.size(28.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Audio", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                        Text("MP3, M4A, WAV and more", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Icon(Icons.AutoMirrored.Rounded.ArrowForward, "Scan audio", tint = MaterialTheme.colorScheme.primary)
+                }
             }
         }
         item {

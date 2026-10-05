@@ -1,6 +1,7 @@
 package com.nexappra.filerecovery.presentation.scan
 
 import android.content.Intent
+import android.media.MediaPlayer
 import android.net.Uri
 import android.widget.MediaController
 import android.widget.VideoView
@@ -102,7 +103,7 @@ fun FullRecoveryResultsRoute(onBack: () -> Unit, onOpenPremium: () -> Unit = {},
     }) { padding ->
         LazyVerticalGrid(GridCells.Adaptive(140.dp), Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(20.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            item(span = { GridItemSpan(maxLineSpan) }) { FlowHeader("Your scan results", "${state.totalFound} photos & videos found", onBack) }
+            item(span = { GridItemSpan(maxLineSpan) }) { FlowHeader("Your scan results", "${state.totalFound} media files found", onBack) }
             if (state.isLoading) item(span = { GridItemSpan(maxLineSpan) }) { Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() } }
             if (state.hasMissingSession || state.errorMessage != null) item(span = { GridItemSpan(maxLineSpan) }) {
                 FlowPanel { Text(state.errorMessage ?: "This scan has expired. Start a new scan to find your files."); Button(onClick = onBack) { Text("Back to scanning") } }
@@ -113,10 +114,19 @@ fun FullRecoveryResultsRoute(onBack: () -> Unit, onOpenPremium: () -> Unit = {},
                         Text(if (state.isPartial) "Scan stopped early. Your found files are ready." else "Preview first. Recover the files you choose.", fontWeight = FontWeight.SemiBold)
                         Text("Includes existing media and any accessible hidden or trashed copies. Files erased from storage cannot be recreated.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         state.warnings.forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        OutlinedButton(enabled = !state.isRecovering, onClick = {
+                            val category = when (state.selectedFilter) {
+                                RecoveryResultFilter.Photos -> RecoveryCategory.Photos
+                                RecoveryResultFilter.Videos -> RecoveryCategory.Videos
+                                RecoveryResultFilter.Audio -> RecoveryCategory.Audio
+                                else -> state.selectedCategory
+                            }
+                            if (state.isPremium) onDeepScan(category) else onOpenPremium()
+                        }) { Text("Explore deep scan") }
                         OutlinedTextField(state.searchQuery, viewModel::onSearchQueryChange, modifier = Modifier.fillMaxWidth(), singleLine = true,
                             placeholder = { Text("Search filenames") }, leadingIcon = { Icon(Icons.Rounded.Search, null) }, shape = RoundedCornerShape(16.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            listOf(RecoveryResultFilter.All, RecoveryResultFilter.Photos, RecoveryResultFilter.Videos).forEach { filter ->
+                            listOf(RecoveryResultFilter.All, RecoveryResultFilter.Photos, RecoveryResultFilter.Videos, RecoveryResultFilter.Audio).forEach { filter ->
                                 FilterChip(selected = state.selectedFilter == filter, onClick = { viewModel.onFilterSelected(filter) }, label = { Text(filter.name) })
                             }
                         }
@@ -131,7 +141,6 @@ fun FullRecoveryResultsRoute(onBack: () -> Unit, onOpenPremium: () -> Unit = {},
                 if (state.visibleFiles.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
                     FlowPanel(Modifier.fillMaxWidth()) {
                         FeatureLine(Icons.Rounded.PhotoLibrary, if (state.allFiles.isEmpty()) "No media found here" else "No matching files", "Try another category, change your media access, or search a chosen folder.")
-                        TextButton(onClick = { if (state.isPremium) onDeepScan(state.selectedCategory) else onOpenPremium() }) { Text("Explore deep scan") }
                     }
                 }
                 items(state.visibleFiles, key = { it.id }) { file ->
@@ -174,7 +183,8 @@ private fun MediaPreview(file: RecoverableFile, premium: Boolean, onClose: () ->
                     Text("${if (premium) "Detailed" else "Standard"} preview", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                     IconButton(onClick = onClose) { Icon(Icons.Rounded.Close, "Close preview") }
                 }
-                if (file.fileType == RecoveryFileType.Video && premium) VideoPreview(file.uriString)
+                if (file.fileType == RecoveryFileType.Audio) AudioPreview(file.uriString)
+                else if (file.fileType == RecoveryFileType.Video && premium) VideoPreview(file.uriString)
                 else if (file.fileType == RecoveryFileType.Video) MediaThumbnail(file, Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(16.dp)))
                 else Box(Modifier.fillMaxWidth().height(320.dp).clip(RoundedCornerShape(16.dp))) {
                     AsyncImage(imageRequest, file.displayName, onError = { previewFailed = true }, onSuccess = { previewFailed = false },
@@ -184,10 +194,43 @@ private fun MediaPreview(file: RecoverableFile, premium: Boolean, onClose: () ->
                 }
                 Text(file.displayName, fontWeight = FontWeight.SemiBold)
                 Text("${file.fileType.name} · ${"%.2f".format(file.sizeBytes / (1024.0 * 1024.0))} MB", style = MaterialTheme.typography.bodySmall)
-                if (!premium) Button(onClick = onPremium, modifier = Modifier.fillMaxWidth()) { Text("Unlock advanced preview") }
-                else Text(if (file.fileType == RecoveryFileType.Photo) "Pinch to inspect detail. Recovery copies the original source bytes." else "Use the playback controls to inspect your video.", style = MaterialTheme.typography.bodySmall)
+                if (!premium && file.fileType != RecoveryFileType.Audio) Button(onClick = onPremium, modifier = Modifier.fillMaxWidth()) { Text("Unlock advanced preview") }
+                else Text(when (file.fileType) {
+                    RecoveryFileType.Photo -> "Pinch to inspect detail. Recovery copies the original source bytes."
+                    RecoveryFileType.Audio -> "Play the audio preview. Recovery copies the original source bytes."
+                    else -> "Use the playback controls to inspect your video."
+                }, style = MaterialTheme.typography.bodySmall)
             }
         }
+    }
+}
+
+@Composable
+private fun AudioPreview(uri: String) {
+    val context = LocalContext.current
+    val owner = LocalLifecycleOwner.current
+    val player = remember(uri) { MediaPlayer() }
+    var ready by remember(uri) { mutableStateOf(false) }
+    var playing by remember(uri) { mutableStateOf(false) }
+    var failed by remember(uri) { mutableStateOf(false) }
+    DisposableEffect(player, uri, owner) {
+        player.setOnPreparedListener { ready = true }
+        player.setOnCompletionListener { playing = false }
+        player.setOnErrorListener { _, _, _ -> failed = true; true }
+        try { player.setDataSource(context, Uri.parse(uri)); player.prepareAsync() }
+        catch (_: Exception) { failed = true }
+        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_PAUSE && player.isPlaying) { player.pause(); playing = false } }
+        owner.lifecycle.addObserver(observer)
+        onDispose { owner.lifecycle.removeObserver(observer); player.release() }
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.fillMaxWidth().padding(20.dp)) {
+        Icon(Icons.Rounded.Audiotrack, null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
+        Button(enabled = ready && !failed, onClick = {
+            if (playing) { player.pause(); playing = false } else { player.start(); playing = true }
+        }) { Text(if (playing) "Pause audio" else "Play audio") }
+        if (!ready && !failed) Text("Preparing audio preview…", style = MaterialTheme.typography.bodySmall)
+        if (failed) Text("Audio preview is unavailable, but the file can still be recovered.", style = MaterialTheme.typography.bodySmall)
     }
 }
 

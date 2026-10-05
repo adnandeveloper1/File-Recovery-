@@ -4,7 +4,7 @@ Continue the existing Kotlin/Compose/Hilt app without discarding previous work. 
 
 ## Accepted product requirements
 
-- Show Photos and Videos only. Category scans must query the matching media collection and filter extensions/MIME types. Quick scans show incremental results, support cancellation, and do not traverse the entire device.
+- Show Photos, Videos and Audio as separate categories. Each category scan must query only its matching media collection and filter extensions/MIME types. The combined quick scan shows photos/videos, publishes incremental results, supports cancellation, and does not traverse the entire device.
 - Free: quick discovery and standard previews. Premium: accessible-folder deep scan, unlimited original-byte recovery, detailed previews, photo re-encoding and original-file cloud ZIP export.
 - Never promise raw-sector recovery, access to other apps' private storage, reconstruction of erased originals, or removal of severe blur. Describe actual Android capabilities clearly.
 - Provide a clearly marked debug-only Premium testing option so the owner can test real recovery tools without paying. Release builds must require verified purchases and must not allow that override.

@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ImageNotSupported
+import androidx.compose.material.icons.rounded.Audiotrack
 import androidx.compose.material.icons.rounded.PlayCircle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -28,8 +29,12 @@ fun MediaThumbnail(file: RecoverableFile, modifier: Modifier = Modifier) {
     }
     var failed by remember(file.uriString) { mutableStateOf(false) }
     Box(modifier.background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
-        AsyncImage(request, file.displayName, Modifier.fillMaxSize(), contentScale = ContentScale.Crop, onError = { failed = true })
-        if (failed) Icon(Icons.Rounded.ImageNotSupported, "Preview unavailable", tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        if (file.fileType == RecoveryFileType.Video && !failed) Icon(Icons.Rounded.PlayCircle, "Video", tint = Color.White)
+        if (file.fileType == RecoveryFileType.Audio) {
+            Icon(Icons.Rounded.Audiotrack, "Audio file", tint = MaterialTheme.colorScheme.primary)
+        } else {
+            AsyncImage(request, file.displayName, Modifier.fillMaxSize(), contentScale = ContentScale.Crop, onError = { failed = true })
+            if (failed) Icon(Icons.Rounded.ImageNotSupported, "Preview unavailable", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (file.fileType == RecoveryFileType.Video && !failed) Icon(Icons.Rounded.PlayCircle, "Video", tint = Color.White)
+        }
     }
 }

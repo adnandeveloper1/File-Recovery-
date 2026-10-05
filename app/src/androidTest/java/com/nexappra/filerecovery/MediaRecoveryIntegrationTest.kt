@@ -66,8 +66,11 @@ class MediaRecoveryIntegrationTest {
         testDirectory.deleteRecursively()
     }
     @Test fun indexedScansAreSelectiveAndPublishResults() = runBlocking {
+        val audioPermission = android.Manifest.permission.READ_MEDIA_AUDIO
+        Assume.assumeTrue("Grant READ_MEDIA_AUDIO before running this integration test", context.checkSelfPermission(audioPermission) == android.content.pm.PackageManager.PERMISSION_GRANTED)
         seed(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, ".png", "image/png", imageBytes)
         seed(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, ".mp4", "video/mp4", ByteArray(64) { 1 })
+        seed(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, ".mp3", "audio/mpeg", "ID3-recovery-test".toByteArray())
         val snapshots = mutableListOf<RecoveryScanSnapshot>()
         val photos = repository.performFullDeviceScan(RecoveryCategory.Photos, RecoveryScanMode.Quick) { snapshots += it }
         assertTrue("Expected photo fixture; warnings=${photos.warnings}", photos.files.any { it.displayName.startsWith(prefix) })
@@ -76,6 +79,12 @@ class MediaRecoveryIntegrationTest {
         val videos = repository.performFullDeviceScan(RecoveryCategory.Videos, RecoveryScanMode.Quick) {}
         assertTrue(videos.files.any { it.displayName.startsWith(prefix) })
         assertTrue(videos.files.all { it.fileType == RecoveryFileType.Video })
+        assertFalse(videos.files.any { it.fileType == RecoveryFileType.Audio })
+        val audio = repository.performFullDeviceScan(RecoveryCategory.Audio, RecoveryScanMode.Quick) {}
+        val foundAudio = audio.files.filter { it.displayName.startsWith(prefix) }
+        assertEquals(1, foundAudio.size)
+        assertEquals(RecoveryFileType.Audio, foundAudio.single().fileType)
+        assertTrue(audio.files.all { it.fileType == RecoveryFileType.Audio })
         assertEquals(photos.files, ScanSessionStore(context).load(photos.id)!!.files)
     }
     @Test fun cancellationKeepsPartialSession() = runBlocking {
@@ -152,6 +161,7 @@ class MediaRecoveryIntegrationTest {
             write(".png", "image/png", imageBytes)
             write(".cache", "application/octet-stream", imageBytes)
             write(".mp4", "video/mp4", ByteArray(64) { 1 })
+            write(".mp3", "audio/mpeg", "ID3-deep-scan".toByteArray())
             write(".txt", "text/plain", "Skip this document".toByteArray())
             runBlocking {
                 val photos = repository.performFullDeviceScan(RecoveryCategory.Photos, RecoveryScanMode.Deep) {}
@@ -204,6 +214,16 @@ class MediaRecoveryIntegrationTest {
                 val foundVideos = videos.files.filter { it.displayName.startsWith(prefix) }
                 assertEquals(1, foundVideos.size)
                 assertEquals(RecoveryFileType.Video, foundVideos.single().fileType)
+
+                val audio = repository.performFullDeviceScan(RecoveryCategory.Audio, RecoveryScanMode.Deep) {}
+                val foundAudio = audio.files.filter { it.displayName.startsWith(prefix) }
+                assertEquals(1, foundAudio.size)
+                assertEquals(RecoveryFileType.Audio, foundAudio.single().fileType)
+                val recoveredAudio = repository.recoverToFolder(audio.id, setOf(foundAudio.single().id), permission.uri.toString())
+                assertEquals(1, recoveredAudio.recoveredCount)
+                val audioCopies = root.listFiles().filter { it.name.orEmpty().startsWith(prefix) && it.name.orEmpty().endsWith(".mp3") }
+                assertEquals(1, audioCopies.size)
+                resolver.openInputStream(audioCopies.single().uri)!!.use { assertArrayEquals("ID3-deep-scan".toByteArray(), it.readBytes()) }
             }
         } finally {
             fixtureFolder.delete()

@@ -22,11 +22,12 @@ sealed interface FullDeviceScanNavigationEvent {
 class FullDeviceScanViewModel @Inject constructor(
     private val repository: RecoveryScanRepository,
     private val premium: PremiumRepository,
-    savedStateHandle: SavedStateHandle,
+    private val savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
-    private val category = savedStateHandle.get<String>(AppDestination.FullDeviceScan.ArgCategory)
-        ?.let { name -> listOf(RecoveryCategory.Photos, RecoveryCategory.Videos).firstOrNull { it.name == name } }
     private val mode = if (savedStateHandle.get<String>(AppDestination.FullDeviceScan.ArgMode) == "Deep") RecoveryScanMode.Deep else RecoveryScanMode.Quick
+    private var category = savedStateHandle.get<String>(AppDestination.FullDeviceScan.ArgCategory)
+        ?.let { name -> listOf(RecoveryCategory.Photos, RecoveryCategory.Videos, RecoveryCategory.Audio).firstOrNull { it.name == name } }
+        ?: if (mode == RecoveryScanMode.Deep) RecoveryCategory.Photos else null
     private val mutableState = MutableStateFlow(FullDeviceScanUiState(selectedCategory = category, mode = mode))
     val uiState = mutableState.asStateFlow()
     private val navigation = Channel<FullDeviceScanNavigationEvent>(Channel.BUFFERED)
@@ -43,11 +44,22 @@ class FullDeviceScanViewModel @Inject constructor(
         if (!started && mode == RecoveryScanMode.Quick) startScan()
     }
 
+    fun selectDeepCategory(selected: RecoveryCategory) {
+        if (mode != RecoveryScanMode.Deep || started || scanJob?.isActive == true || uiState.value.isStopping) return
+        if (selected !in listOf(RecoveryCategory.Photos, RecoveryCategory.Videos, RecoveryCategory.Audio)) return
+        category = selected
+        savedStateHandle[AppDestination.FullDeviceScan.ArgCategory] = selected.name
+        mutableState.update { it.copy(selectedCategory = selected) }
+    }
+
     private fun hasAccess(): Boolean = with(uiState.value.permissions) {
-        legacyReadAccess || allFilesAccess || partialVisualAccess ||
-            (category != RecoveryCategory.Videos && fullImagesAccess) ||
-            (category != RecoveryCategory.Photos && fullVideosAccess) ||
-            (mode == RecoveryScanMode.Deep && safFolderCount > 0)
+        if (mode == RecoveryScanMode.Deep) safFolderCount > 0
+        else if (legacyReadAccess || allFilesAccess) true else when (category) {
+            RecoveryCategory.Photos -> fullImagesAccess || partialVisualAccess
+            RecoveryCategory.Videos -> fullVideosAccess || partialVisualAccess
+            RecoveryCategory.Audio -> audioAccess
+            else -> fullImagesAccess || fullVideosAccess || partialVisualAccess
+        }
     }
 
     fun startScan() {

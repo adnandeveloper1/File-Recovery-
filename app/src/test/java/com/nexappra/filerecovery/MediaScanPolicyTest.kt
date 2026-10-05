@@ -14,14 +14,19 @@ class MediaScanPolicyTest {
         assertFalse(policy.accepts("cover.jpg", "audio/mpeg"))
         assertFalse(policy.accepts("document.jpg", "application/pdf"))
     }
-    @Test fun videoScanRejectsPhotosAndQuickScanContainsOnlyVisualMedia() {
+    @Test fun categoryScansRejectUnselectedMediaTypes() {
         assertTrue(MediaScanPolicy(RecoveryCategory.Videos).accepts("MOVIE.MOV", "application/octet-stream"))
         assertFalse(MediaScanPolicy(RecoveryCategory.Videos).accepts("photo.png", "image/png"))
+        val audio = MediaScanPolicy(RecoveryCategory.Audio)
+        assertTrue(audio.accepts("voice.mp3", "audio/mpeg"))
+        assertTrue(audio.accepts("voice.m4a", "application/octet-stream"))
+        assertFalse(audio.accepts("photo.png", "image/png"))
+        assertFalse(audio.accepts("movie.mp4", "video/mp4"))
         assertEquals(setOf(RecoveryFileType.Photo, RecoveryFileType.Video), MediaScanPolicy().types)
         assertFalse(MediaScanPolicy().accepts("voice.mp3", null))
         assertFalse(MediaScanPolicy().accepts("backup.zip", null))
     }
-    @Test(expected = IllegalArgumentException::class) fun unsupportedCategoryCannotStartVisualScan() { MediaScanPolicy(RecoveryCategory.Audio) }
+    @Test(expected = IllegalArgumentException::class) fun unsupportedCategoryCannotStartVisualScan() { MediaScanPolicy(RecoveryCategory.Documents) }
     @Test fun unsafeFileNamesCannotEscapeDestination() {
         assertEquals("holiday.jpg", MediaScanPolicy.safeFileName("../../holiday.jpg"))
         assertEquals("photo.jpg", MediaScanPolicy.safeFileName("C:\\private\\photo.jpg"))

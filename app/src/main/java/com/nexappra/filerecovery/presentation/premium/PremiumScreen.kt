@@ -42,7 +42,7 @@ fun PremiumRoute(onClose: () -> Unit, viewModel: PremiumViewModel = hiltViewMode
             Column(Modifier.fillMaxWidth().recoveryHero().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Icon(Icons.Rounded.VerifiedUser, null, tint = RecoveryMint, modifier = Modifier.size(28.dp))
                 Text(if (active) "Ready to recover" else "Keep what matters", style = MaterialTheme.typography.headlineLarge, color = Color.White)
-                Text("Save original photos and videos, search deeper and export your files in one place.", color = Color.White.copy(alpha = .8f))
+                Text("Save original photos, videos and audio, search deeper and export your files in one place.", color = Color.White.copy(alpha = .8f))
                 if (active) Text(if (state.isDebugPreview) "TEST ACCESS · DEBUG BUILD" else "SUBSCRIPTION ACTIVE", style = MaterialTheme.typography.labelMedium, color = RecoveryMint)
             }
         }
@@ -66,7 +66,7 @@ fun PremiumRoute(onClose: () -> Unit, viewModel: PremiumViewModel = hiltViewMode
         }
         item {
             FlowPanel(Modifier.fillMaxWidth()) {
-                FeatureLine(Icons.Rounded.HighQuality, "Unlimited original files", "Copy all readable photos and videos in their existing quality.")
+                FeatureLine(Icons.Rounded.HighQuality, "Unlimited original files", "Copy all readable photos, videos and audio in their existing quality.")
                 FeatureLine(Icons.Rounded.ManageSearch, "Deeper folder search", "Search folders you choose, including accessible hidden and cached media.")
                 FeatureLine(Icons.Rounded.ZoomIn, "Detailed previews", "Zoom into photos and play videos before saving.")
                 FeatureLine(Icons.Rounded.AutoFixHigh, "Repair a readable photo", "Create a fresh PNG from decodable pixels, up to 2048 px.")

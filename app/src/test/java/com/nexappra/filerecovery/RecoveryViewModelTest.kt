@@ -46,6 +46,30 @@ class RecoveryViewModelTest {
         assertEquals(1, repo.scans)
         assertEquals(RecoveryCategory.Photos, repo.category)
     }
+    @Test fun selectedPhotoPermissionStartsPhotoScanWithoutFullLibraryAccess() = runTest(dispatcher) {
+        val repo = Repository()
+        val vm = FullDeviceScanViewModel(repo, Premium(false), SavedStateHandle(mapOf(AppDestination.FullDeviceScan.ArgCategory to "Photos")))
+        vm.onAccessStateChanged(DeviceScanAccessState(DeviceScanPermissions(partialVisualAccess = true)))
+        runCurrent()
+        assertEquals(1, repo.scans)
+        assertEquals(RecoveryCategory.Photos, repo.category)
+    }
+
+    @Test fun deepCategoryChoiceRestoresAndAudioNeedsOnlyFolderAccess() = runTest(dispatcher) {
+        val repo = Repository()
+        val saved = SavedStateHandle(mapOf(AppDestination.FullDeviceScan.ArgMode to "Deep"))
+        val vm = FullDeviceScanViewModel(repo, Premium(true), saved)
+        assertEquals(RecoveryCategory.Photos, vm.uiState.value.selectedCategory)
+        vm.selectDeepCategory(RecoveryCategory.Audio)
+        val restored = FullDeviceScanViewModel(repo, Premium(true), saved)
+        assertEquals(RecoveryCategory.Audio, restored.uiState.value.selectedCategory)
+        restored.onAccessStateChanged(DeviceScanAccessState(DeviceScanPermissions(safFolderCount = 1)))
+        restored.startScan(); runCurrent()
+        assertEquals(1, repo.scans)
+        assertEquals(RecoveryCategory.Audio, repo.category)
+        restored.selectDeepCategory(RecoveryCategory.Videos)
+        assertEquals(RecoveryCategory.Audio, restored.uiState.value.selectedCategory)
+    }
     @Test fun videoPermissionDoesNotAuthorizePhotoScanAndFreeCannotDeepScan() = runTest(dispatcher) {
         val repo = Repository()
         val vm = FullDeviceScanViewModel(repo, Premium(false), SavedStateHandle(mapOf(AppDestination.FullDeviceScan.ArgCategory to "Photos")))
@@ -56,6 +80,32 @@ class RecoveryViewModelTest {
         deep.onAccessStateChanged(DeviceScanAccessState(DeviceScanPermissions(fullImagesAccess = true)))
         deep.startScan(); runCurrent()
         assertEquals(0, repo.scans)
+    }
+
+    @Test fun deepScanNeedsChosenFolderEvenWhenMediaPermissionIsGranted() = runTest(dispatcher) {
+        val repo = Repository()
+        val vm = FullDeviceScanViewModel(repo, Premium(true), SavedStateHandle(mapOf(AppDestination.FullDeviceScan.ArgMode to "Deep")))
+        vm.onAccessStateChanged(DeviceScanAccessState(DeviceScanPermissions(fullImagesAccess = true, fullVideosAccess = true, partialVisualAccess = true)))
+        assertFalse(vm.uiState.value.canStartFullDeviceScan)
+        vm.startScan(); runCurrent()
+        assertEquals(0, repo.scans)
+
+        vm.onAccessStateChanged(DeviceScanAccessState(DeviceScanPermissions(fullImagesAccess = true, fullVideosAccess = true, safFolderCount = 1)))
+        assertTrue(vm.uiState.value.canStartFullDeviceScan)
+        vm.startScan(); runCurrent()
+        assertEquals(1, repo.scans)
+    }
+
+    @Test fun audioScanNeedsAudioAccessAndKeepsItsCategory() = runTest(dispatcher) {
+        val repo = Repository()
+        val vm = FullDeviceScanViewModel(repo, Premium(false), SavedStateHandle(mapOf(AppDestination.FullDeviceScan.ArgCategory to "Audio")))
+        vm.onAccessStateChanged(DeviceScanAccessState(DeviceScanPermissions(fullImagesAccess = true, fullVideosAccess = true, partialVisualAccess = true)))
+        runCurrent()
+        assertEquals(0, repo.scans)
+        vm.onAccessStateChanged(DeviceScanAccessState(DeviceScanPermissions(audioAccess = true)))
+        runCurrent()
+        assertEquals(1, repo.scans)
+        assertEquals(RecoveryCategory.Audio, repo.category)
     }
     @Test fun freeRecoveryIsBlockedAndSelectionSurvives() = runTest(dispatcher) {
         val repo = Repository()
