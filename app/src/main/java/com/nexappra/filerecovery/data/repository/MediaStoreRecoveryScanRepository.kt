@@ -110,7 +110,7 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
 
         try {
             publish(force = true)
-            val completed = withTimeoutOrNull(if (mode == RecoveryScanMode.Deep) 120_000L else 20_000L) {
+            val completed = withTimeoutOrNull(if (mode == RecoveryScanMode.Deep) 600_000L else 30_000L) {
                 policy.types.forEach { type ->
                     stage(locationFor(type)) {
                         val volumes = if (Build.VERSION.SDK_INT >= 29) MediaStore.getExternalVolumeNames(context).toList() else listOf("external")
@@ -231,14 +231,15 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
 
     private suspend fun scanDirectories(policy: MediaScanPolicy, record: suspend (RecoverableFile) -> Unit) {
         val storageRoot = Environment.getExternalStorageDirectory()
-        val names = buildSet {
-            addAll(listOf("DCIM", "Download", "Android/media", ".Trash", ".trash"))
-            if (RecoveryFileType.Photo in policy.types) add("Pictures")
-            if (RecoveryFileType.Video in policy.types) add("Movies")
-            if (RecoveryFileType.Audio in policy.types) add("Music")
-        }
         val queue = ArrayDeque<Pair<File, Int>>()
-        names.forEach { queue.add(File(storageRoot, it) to 0) }
+        storageRoot.listFiles()?.forEach { file ->
+            if (file.isDirectory) {
+                if (file.name != "Android") queue.add(file to 0)
+            }
+        }
+        val androidMedia = File(storageRoot, "Android/media")
+        if (androidMedia.exists() && androidMedia.isDirectory) queue.add(androidMedia to 0)
+
         val visited = HashSet<String>()
         val rootPrefix = storageRoot.canonicalPath + File.separator
         while (queue.isNotEmpty()) {
@@ -249,7 +250,12 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
             directory.listFiles()?.forEach { file ->
                 coroutineContext.ensureActive()
                 if (!file.canonicalPath.startsWith(rootPrefix)) return@forEach
-                if (file.isDirectory) { queue.add(file to depth + 1); return@forEach }
+                if (file.isDirectory) {
+                    if (file.name != "Android" || file.relativeTo(storageRoot).path == "Android/media") {
+                        queue.add(file to depth + 1)
+                    }
+                    return@forEach
+                }
                 if (!file.isFile || file.length() <= 0L || file.name == ".nomedia") return@forEach
                 val known = MediaScanPolicy.classify(file.name, null)
                 val inferred = if (known == null && policy.shouldReadHeader(file.name)) FileSignatureDetector.inspect(file) else null

@@ -211,11 +211,13 @@ class MediaRecoveryIntegrationTest {
                 catch (_: CancellationException) {}
                 assertEquals(1, interruptedHistory.entries.value.first().count)
                 val videos = repository.performFullDeviceScan(RecoveryCategory.Videos, RecoveryScanMode.Deep) {}
+                assertTrue(videos.files.all { it.fileType == RecoveryFileType.Video })
                 val foundVideos = videos.files.filter { it.displayName.startsWith(prefix) }
                 assertEquals(1, foundVideos.size)
                 assertEquals(RecoveryFileType.Video, foundVideos.single().fileType)
 
                 val audio = repository.performFullDeviceScan(RecoveryCategory.Audio, RecoveryScanMode.Deep) {}
+                assertTrue(audio.files.all { it.fileType == RecoveryFileType.Audio })
                 val foundAudio = audio.files.filter { it.displayName.startsWith(prefix) }
                 assertEquals(1, foundAudio.size)
                 assertEquals(RecoveryFileType.Audio, foundAudio.single().fileType)

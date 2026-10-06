@@ -1,12 +1,15 @@
 package com.nexappra.filerecovery.presentation.scan
 
 import android.Manifest
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Environment
+import android.net.Uri
 import android.provider.DocumentsContract
+import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -17,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -37,14 +41,27 @@ fun FullDeviceScanRoute(onBack: () -> Unit, onNavigateToResults: (String) -> Uni
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val owner = LocalLifecycleOwner.current
-    var folderError by remember { mutableStateOf<String?>(null) }
-    val permissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { viewModel.onAccessStateChanged(context.mediaAccess()) }
+    var folderMessage by rememberSaveable { mutableStateOf<String?>(null) }
+    var permissionDenied by rememberSaveable(state.selectedCategory) { mutableStateOf(false) }
+    val permissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        val access = context.mediaAccess()
+        permissionDenied = !access.permissions.canReadMedia(state.selectedCategory)
+        viewModel.onAccessStateChanged(access)
+    }
     val folder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) {
-            try { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION); folderError = null }
-            catch (_: SecurityException) { folderError = "This folder does not provide persistent access. Please choose another folder." }
+            try {
+                context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                folderMessage = "Folder access granted. Tap Start deep scan to search your selected category."
+            } catch (_: SecurityException) { folderMessage = "This folder does not provide persistent access. Please choose another folder." }
             viewModel.onAccessStateChanged(context.mediaAccess())
+        } else {
+            folderMessage = "No folder selected. Choose a folder, then confirm Use this folder and Allow."
         }
+    }
+    val chooseFolder: () -> Unit = {
+        try { folder.launch(null) }
+        catch (_: ActivityNotFoundException) { folderMessage = "Android's file picker is unavailable. Enable the system Files app and try again." }
     }
     DisposableEffect(owner, context) {
         val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_RESUME) viewModel.onAccessStateChanged(context.mediaAccess()) }
@@ -60,12 +77,7 @@ fun FullDeviceScanRoute(onBack: () -> Unit, onNavigateToResults: (String) -> Uni
     }
     BackHandler { viewModel.stopScan() }
     val title = when (state.selectedCategory) { RecoveryCategory.Photos -> "Photo scan"; RecoveryCategory.Videos -> "Video scan"; RecoveryCategory.Audio -> "Audio scan"; else -> "Photos & videos" }
-    val hasCategoryMediaAccess = when (state.selectedCategory) {
-        RecoveryCategory.Photos -> state.permissions.fullImagesAccess || state.permissions.partialVisualAccess || state.permissions.legacyReadAccess || state.permissions.allFilesAccess
-        RecoveryCategory.Videos -> state.permissions.fullVideosAccess || state.permissions.partialVisualAccess || state.permissions.legacyReadAccess || state.permissions.allFilesAccess
-        RecoveryCategory.Audio -> state.permissions.audioAccess || state.permissions.legacyReadAccess || state.permissions.allFilesAccess
-        else -> state.permissions.canStartFullDeviceScan
-    }
+    val hasCategoryMediaAccess = state.permissions.canReadMedia(state.selectedCategory)
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(22.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
         item { FlowHeader(title, if (state.mode == RecoveryScanMode.Deep) "DEEP SEARCH" else "QUICK SCAN", onBack = viewModel::stopScan) }
         if (state.mode == RecoveryScanMode.Deep && !state.isPremium) {
@@ -77,29 +89,47 @@ fun FullDeviceScanRoute(onBack: () -> Unit, onNavigateToResults: (String) -> Uni
             item { FlowPanel(Modifier.fillMaxWidth()) {
                 if (state.mode == RecoveryScanMode.Deep) {
                     DeepScanCategoryPicker(state.selectedCategory ?: RecoveryCategory.Photos, viewModel::selectDeepCategory)
-                    FeatureLine(Icons.Rounded.FolderOpen, "Choose a folder to deep scan", "Search your chosen folders and permitted media for ${state.selectedCategory?.name?.lowercase() ?: "photos"} only, including readable hidden and cached copies.")
+                    FeatureLine(Icons.Rounded.FolderOpen, "Choose your deep scan access", "Search permitted media and chosen folders for ${state.selectedCategory?.name?.lowercase() ?: "photos"} only. Choose a folder to include readable hidden and cached copies.")
                 } else {
                     FeatureLine(Icons.Rounded.FolderOpen, "Choose your scan access", "Allow access to the selected media category. Android may limit the results you can scan.")
                 }
-                if (state.mode != RecoveryScanMode.Deep || !hasCategoryMediaAccess) {
+                if (!hasCategoryMediaAccess) {
                     Button(onClick = { permissions.launch(mediaPermissions(state.selectedCategory)) }, modifier = Modifier.fillMaxWidth()) {
                         Text(if (hasCategoryMediaAccess) "Update media access" else "Allow media access")
                     }
                 } else {
-                    Text("Media access is already allowed. Choose a folder below to enable the deep scan.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    val limitedSelection = state.permissions.partialVisualAccess && when (state.selectedCategory) {
+                        RecoveryCategory.Photos -> !state.permissions.fullImagesAccess
+                        RecoveryCategory.Videos -> !state.permissions.fullVideosAccess
+                        else -> false
+                    }
+                    Text(if (limitedSelection) "Only selected photos/videos are available. You can update your selection below." else "${state.selectedCategory?.name ?: "Media"} access is allowed. You can start the scan.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (limitedSelection) OutlinedButton(onClick = { permissions.launch(mediaPermissions(state.selectedCategory)) }, modifier = Modifier.fillMaxWidth()) { Text("Update selected media") }
+                }
+                if (permissionDenied && !hasCategoryMediaAccess) {
+                    Text("Media access was not granted. Retry, or open app settings and enable permission for this category.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    OutlinedButton(onClick = {
+                        try { context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))) }
+                        catch (_: ActivityNotFoundException) { folderMessage = "Open Android Settings > Apps > File Recovery > Permissions to allow access." }
+                    }, modifier = Modifier.fillMaxWidth()) { Text("Open app settings") }
                 }
                 if (state.mode == RecoveryScanMode.Deep) {
-                    OutlinedButton(onClick = { folder.launch(null) }, modifier = Modifier.fillMaxWidth()) { Text("Choose a folder") }
+                    OutlinedButton(onClick = chooseFolder, modifier = Modifier.fillMaxWidth()) { Text("Choose a folder") }
                     Text("${state.permissions.safFolderCount} chosen folder(s)", style = MaterialTheme.typography.bodySmall)
+                    if (state.hasAuthorizedFolders && !hasCategoryMediaAccess) Text("Folder access is ready. Media permission is optional for scanning your chosen folders.", style = MaterialTheme.typography.bodySmall)
                     Text("Deep scan searches files that still exist in accessible folders. Android does not allow raw-sector recovery or access to other apps' private caches.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Button(onClick = viewModel::startScan, modifier = Modifier.fillMaxWidth(), enabled = state.canStartFullDeviceScan) { Text("Start deep scan") }
                 }
-                if (folderError != null) Text(folderError!!, color = MaterialTheme.colorScheme.error)
+                if (folderMessage != null) Text(folderMessage!!, style = MaterialTheme.typography.bodySmall)
             } }
         } else if (state.scanStatus == RecoveryScanStatus.Error) {
             item { FlowPanel(Modifier.fillMaxWidth()) {
                 FeatureLine(Icons.Rounded.Info, "Let's try again", state.errorMessage ?: "This storage could not be read.")
                 Button(onClick = viewModel::retryScan) { Text("Retry scan") }
+                if (state.mode == RecoveryScanMode.Deep) {
+                    OutlinedButton(onClick = chooseFolder) { Text("Choose a folder") }
+                    if (folderMessage != null) Text(folderMessage!!, style = MaterialTheme.typography.bodySmall)
+                }
             } }
         } else {
             item { FlowPanel(Modifier.fillMaxWidth()) {

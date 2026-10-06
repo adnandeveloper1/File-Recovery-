@@ -1,5 +1,8 @@
 package com.nexappra.filerecovery.presentation.scan
 
+import com.nexappra.filerecovery.domain.model.RecoveryCategory
+import com.nexappra.filerecovery.domain.model.RecoveryScanMode
+
 enum class DeviceScanAccessLevel {
     FullAccess,
     PartialVisualAccess,
@@ -17,6 +20,16 @@ data class DeviceScanPermissions(
     val sharedStorageTraversalAccess: Boolean = false,
     val safFolderCount: Int = 0,
 ) {
+    fun canReadMedia(category: RecoveryCategory?): Boolean = legacyReadAccess || allFilesAccess || when (category) {
+        RecoveryCategory.Photos -> fullImagesAccess || partialVisualAccess
+        RecoveryCategory.Videos -> fullVideosAccess || partialVisualAccess
+        RecoveryCategory.Audio -> audioAccess
+        else -> fullImagesAccess || fullVideosAccess || partialVisualAccess
+    }
+
+    fun canScan(category: RecoveryCategory?, mode: RecoveryScanMode): Boolean =
+        canReadMedia(category) || (mode == RecoveryScanMode.Deep && safFolderCount > 0)
+
     val hasFullVisualAccess: Boolean
         get() = legacyReadAccess || allFilesAccess || (fullImagesAccess && fullVideosAccess)
 

@@ -52,15 +52,7 @@ class FullDeviceScanViewModel @Inject constructor(
         mutableState.update { it.copy(selectedCategory = selected) }
     }
 
-    private fun hasAccess(): Boolean = with(uiState.value.permissions) {
-        if (mode == RecoveryScanMode.Deep) safFolderCount > 0
-        else if (legacyReadAccess || allFilesAccess) true else when (category) {
-            RecoveryCategory.Photos -> fullImagesAccess || partialVisualAccess
-            RecoveryCategory.Videos -> fullVideosAccess || partialVisualAccess
-            RecoveryCategory.Audio -> audioAccess
-            else -> fullImagesAccess || fullVideosAccess || partialVisualAccess
-        }
-    }
+    private fun hasAccess(): Boolean = uiState.value.permissions.canScan(category, mode)
 
     fun startScan() {
         if (scanJob?.isActive == true || started || uiState.value.isStopping) return

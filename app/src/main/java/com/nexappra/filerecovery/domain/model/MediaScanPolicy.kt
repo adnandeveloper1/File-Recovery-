@@ -17,15 +17,20 @@ data class MediaScanPolicy(val category: RecoveryCategory? = null) {
 
     fun accepts(name: String, mime: String?): Boolean = classify(name, mime) in types
 
-    fun shouldReadHeader(name: String): Boolean = name.substringAfterLast('.', "")
-        .lowercase(Locale.ROOT) in setOf("", "cache", "tmp", "dat", "bin")
+    fun shouldReadHeader(name: String): Boolean {
+        val ext = name.substringAfterLast('.', "").lowercase(Locale.ROOT)
+        if (ext in setOf("", "cache", "tmp", "dat", "bin", "thumb", "cnt", "idx", "p", "exo", "0", "1", "2")) return true
+        if (ext.all { it.isDigit() }) return true
+        if (name.contains("thumb", ignoreCase = true) || name.startsWith(".")) return true
+        return false
+    }
 
     fun shouldReadHeader(name: String, mime: String?): Boolean = shouldReadHeader(name) &&
         mime?.substringBefore(';')?.trim()?.lowercase(Locale.ROOT).orEmpty() in
         setOf("", "application/octet-stream", "application/unknown", "chemical/x-cache", "application/x-cache")
 
     companion object {
-        val imageExtensions = setOf("jpg", "jpeg", "png", "webp", "gif", "bmp", "heic", "heif", "avif", "dng", "tif", "tiff")
+        val imageExtensions = setOf("jpg", "jpeg", "png", "webp", "gif", "bmp", "heic", "heif", "avif", "dng", "tif", "tiff", "svg", "ico", "raw")
         val videoExtensions = setOf("mp4", "m4v", "mkv", "3gp", "3gpp", "webm", "mov", "avi", "mpeg", "mpg", "ts")
         val audioExtensions = setOf("mp3", "m4a", "aac", "wav", "flac", "ogg", "opus", "amr", "mid", "midi", "wma")
 

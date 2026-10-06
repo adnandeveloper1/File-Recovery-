@@ -17,7 +17,8 @@ class HomeFlowTest {
         compose.setContent { FileRecoveryTheme(false) { HomeScreen(HomeUiState(), { selected = it }, {}, {}, {}) } }
         compose.onNodeWithText("Photos").performScrollTo().assertIsDisplayed().performClick()
         assertEquals(RecoveryCategory.Photos, selected)
-        compose.onNodeWithText("Videos").assertIsDisplayed()
+        compose.onNodeWithText("Videos").performScrollTo().assertIsDisplayed().performClick()
+        assertEquals(RecoveryCategory.Videos, selected)
         compose.onNodeWithText("Audio").performScrollTo().assertIsDisplayed().performClick()
         assertEquals(RecoveryCategory.Audio, selected)
         compose.onNodeWithText("Documents").assertDoesNotExist()

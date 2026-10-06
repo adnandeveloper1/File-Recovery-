@@ -22,7 +22,7 @@ Header-detected cache images retain their actual MIME type, and recovered copies
 
 Android does not expose raw erased sectors or other apps' private caches to a normal app. Results can include existing media, hidden copies and any accessible trash/cache copies. This app does not claim that existing gallery files were deleted, that unavailable originals can be reconstructed, or that re-encoding removes severe blur. File access can be revoked or a source can disappear between scan and recovery.
 
-Deep scans require folder access and Premium. Cloud export requires a compatible installed provider. Large writes should remain in the foreground; leaving the result screen or terminating the app can cancel an operation. Partial files created by a failed operation are cleaned up where the provider permits it.
+Deep scans require Premium and either permission for the selected media category or access to a chosen folder. Choose a folder to include its hidden/cache copies. Denied media permissions show an app-settings fallback; cancelling the folder picker shows how to grant access. Cloud export requires a compatible installed provider. Large writes should remain in the foreground; leaving the result screen or terminating the app can cancel an operation. Partial files created by a failed operation are cleaned up where the provider permits it.
 
 ## Billing
 
@@ -34,7 +34,7 @@ Debug builds have a clearly labelled **Test Premium features** switch on the Pre
 
 1. Install the debug APK and open **Get Plus** (or **Settings → Recovery Plus**).
 2. Turn on **Test Premium features**, then use Back to return home.
-3. Open **Deep scan**, choose a folder containing your test photos/videos and tap **Start deep scan**. Folder access comes from Android's picker; private app directories and erased sectors are unavailable.
+3. Open **Deep scan**, select **Photos**, **Videos** or **Audio**, then grant matching media access or **Choose a folder** containing your test files. In Android's picker confirm **Use this folder > Allow**, return and tap **Start deep scan**. Folder scanning works without media-library permission. Private app directories and erased sectors are unavailable.
 4. Select results and use **Recover**, **Cloud export**, or **Repair copy** (one photo selected). Pick a separate destination folder for recovery. Cloud export needs an installed provider such as Drive.
 5. Tap a thumbnail for a detailed photo preview or video playback. Check **Saved** for completed operations.
 6. Turn test access off to check Premium locks. A force-stop/restart also resets test access. This test mode does not validate Google Play payment, renewal or restore.

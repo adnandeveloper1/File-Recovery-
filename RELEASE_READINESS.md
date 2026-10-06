@@ -1,5 +1,13 @@
 # Release readiness review — 4 October 2026
 
+## Latest permission/category follow-up — 5 October 2026
+
+The source findings recorded below are now fixed. Photos and Videos accept selected-media permission, Deep Scan exposes Photos/Videos/Audio, and Start uses the same category-specific permission check as the view model. A chosen folder authorizes Deep Scan only; it cannot authorize a Quick media-index scan. Deep Scan accepts either matching media access or folder access. Repeatedly denied requests now explain the problem and offer app settings. Folder selection reports success/cancellation and limited visual access offers reselection.
+
+The current debug build and instrumentation APK compile; all **23 JVM tests pass**. See `SENIOR_HANDOFF.md` for the latest device results. Older release/lint results below describe earlier artifacts; no newly signed production bundle was created in this follow-up.
+
+Full in-app privacy text and `privacy/index.html` are prepared, with `privacy/PLAY_DECLARATIONS.md` for the publisher. Public hosting and Play Console submission remain pending. A real Drive export was attempted with a generated image: the signed-in Drive document provider displayed **“Can’t load content at the moment”** and disabled Save. No remote upload was completed or claimed.
+
 ## Previous session recovered
 
 Reviewed the local “Make app production ready” session and `IMPLEMENTATION_BRIEF.md`. The current accepted scope is selective Photos, Videos and Audio scans, fast incremental quick scans, Premium folder scans and original-byte copies, detailed previews, bounded photo repair, cloud ZIP export, and a consistent blue interface. Existing uncommitted changes were preserved.
@@ -56,7 +64,7 @@ Production-readiness follow-up: local checks pass, but the updated release CI wo
 
 ## Required before public release
 
-Follow-up source review found two unresolved app issues; passing the previous tests does not cover them:
+Historical source findings (fixed by the latest follow-up above):
 
 - `FullDeviceScanViewModel.hasAccess()` accepts only full image permission for Photos. On Android 14+ a user granting selected-photo access can remain at the access screen, although the screen treats partial access as allowed. Accept partial visual access for Photos and add a regression test before release.
 - Home/Tools launch Deep mode with a null category, which currently selects photos/videos only. The screen describes audio too. Category-specific Deep Scan is offered only when the visible results are empty. Make the category choice available for normal results and make the default Deep Scan scope/copy consistent.
