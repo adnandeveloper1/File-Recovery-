@@ -55,6 +55,7 @@ internal object FileSignatureDetector {
                 else -> null
             }
             header.asciiAt(0, "ID3") || header.hasMpegAudioFrame() -> Signature(RecoveryFileType.Audio, "audio/mpeg")
+            (header.size > 1 && (header[0].toInt() and 0xFF) == 0xFF && (header[1].toInt() and 0xF6) == 0xF0) -> Signature(RecoveryFileType.Audio, "audio/aac")
             else -> null
         }
     }

@@ -110,7 +110,7 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
 
         try {
             publish(force = true)
-            val completed = withTimeoutOrNull(if (mode == RecoveryScanMode.Deep) 600_000L else 30_000L) {
+            val completed = withTimeoutOrNull(if (mode == RecoveryScanMode.Deep) 3_600_000L else 30_000L) {
                 policy.types.forEach { type ->
                     stage(locationFor(type)) {
                         val volumes = if (Build.VERSION.SDK_INT >= 29) MediaStore.getExternalVolumeNames(context).toList() else listOf("external")

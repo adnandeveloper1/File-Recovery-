@@ -18,10 +18,11 @@ data class MediaScanPolicy(val category: RecoveryCategory? = null) {
     fun accepts(name: String, mime: String?): Boolean = classify(name, mime) in types
 
     fun shouldReadHeader(name: String): Boolean {
+        if (!name.contains('.')) return true
         val ext = name.substringAfterLast('.', "").lowercase(Locale.ROOT)
-        if (ext in setOf("", "cache", "tmp", "dat", "bin", "thumb", "cnt", "idx", "p", "exo", "0", "1", "2")) return true
+        if (ext in setOf("", "cache", "tmp", "dat", "bin", "thumb", "cnt", "idx", "p", "exo", "0", "1", "2", "file", "temp", "noext", "chunk", "opus", "aac", "m4a", "amr", "ogg", "mp3", "wav", "nomedia")) return true
         if (ext.all { it.isDigit() }) return true
-        if (name.contains("thumb", ignoreCase = true) || name.startsWith(".")) return true
+        if (name.contains("thumb", ignoreCase = true) || name.contains("cache", ignoreCase = true) || name.contains("voice", ignoreCase = true) || name.contains("audio", ignoreCase = true) || name.contains("record", ignoreCase = true) || name.contains("ptt", ignoreCase = true) || name.startsWith(".")) return true
         return false
     }
 
