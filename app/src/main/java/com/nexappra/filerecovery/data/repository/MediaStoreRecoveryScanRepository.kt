@@ -229,9 +229,7 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
         val storageRoot = Environment.getExternalStorageDirectory()
         val queue = ArrayDeque<Pair<File, Int>>()
         storageRoot.listFiles()?.forEach { file ->
-            if (file.isDirectory) {
-                if (file.name != "Android") queue.add(file to 0)
-            }
+            if (file.isDirectory && file.name != "Android") queue.add(file to 0)
         }
         val androidMedia = File(storageRoot, "Android/media")
         if (androidMedia.exists() && androidMedia.isDirectory) queue.add(androidMedia to 0)
@@ -241,13 +239,13 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
         while (queue.isNotEmpty()) {
             coroutineContext.ensureActive()
             val (directory, depth) = queue.removeFirst()
-            val canonical = directory.canonicalPath
+            val canonical = try { directory.canonicalPath } catch (_: Exception) { directory.path }
             if (depth > 32 || !canonical.startsWith(rootPrefix) || !visited.add(canonical)) continue
             directory.listFiles()?.forEach { file ->
                 coroutineContext.ensureActive()
-                if (!file.canonicalPath.startsWith(rootPrefix)) return@forEach
+                val path = file.path
                 if (file.isDirectory) {
-                    if (file.name != "Android" || file.relativeTo(storageRoot).path == "Android/media") {
+                    if (file.name != "Android" || path.endsWith("Android/media") || path.endsWith("Android\\media")) {
                         queue.add(file to depth + 1)
                     }
                     return@forEach
