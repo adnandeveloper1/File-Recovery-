@@ -114,6 +114,19 @@ fun FullDeviceScanRoute(onBack: () -> Unit, onNavigateToResults: (String) -> Uni
                     }, modifier = Modifier.fillMaxWidth()) { Text("Open app settings") }
                 }
                 if (state.mode == RecoveryScanMode.Deep) {
+                    if (Build.VERSION.SDK_INT >= 30 && !state.permissions.allFilesAccess) {
+                        OutlinedButton(onClick = {
+                            try {
+                                context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
+                            } catch (_: ActivityNotFoundException) {
+                                try {
+                                    context.startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+                                } catch (_: Exception) {
+                                    folderMessage = "Open Settings > Privacy > All files access to allow full storage access."
+                                }
+                            }
+                        }, modifier = Modifier.fillMaxWidth()) { Text("Allow All Files access") }
+                    }
                     OutlinedButton(onClick = chooseFolder, modifier = Modifier.fillMaxWidth()) { Text("Choose a folder") }
                     Text("${state.permissions.safFolderCount} chosen folder(s)", style = MaterialTheme.typography.bodySmall)
                     if (state.hasAuthorizedFolders && !hasCategoryMediaAccess) Text("Folder access is ready. Media permission is optional for scanning your chosen folders.", style = MaterialTheme.typography.bodySmall)

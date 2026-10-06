@@ -127,11 +127,7 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
                             .forEach { permission -> scanTree(permission.uri, policy, ::record) }
                     }
                     stage(RecoveryScanLocationType.AccessibleStorage) {
-                        if (Build.VERSION.SDK_INT < 29 || (Build.VERSION.SDK_INT >= 30 && Environment.isExternalStorageManager())) {
-                            scanDirectories(policy, ::record)
-                        } else if (resolver.persistedUriPermissions.none { it.isReadPermission && DocumentsContract.isTreeUri(it.uri) }) {
-                            warnings += "For a deeper search, choose a folder before scanning. Private app storage and erased sectors are not accessible on this device."
-                        }
+                        scanDirectories(policy, ::record)
                     }
                 }
                 true
