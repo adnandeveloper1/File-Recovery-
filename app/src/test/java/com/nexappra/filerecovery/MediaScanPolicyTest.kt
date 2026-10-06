@@ -42,7 +42,7 @@ class MediaScanPolicyTest {
         fun header(brand: String) = ByteArray(32).apply {
             "ftyp".toByteArray().copyInto(this, 4); brand.toByteArray().copyInto(this, 8)
         }
-        assertNull(FileSignatureDetector.detect(ByteArrayInputStream(header("M4A "))))
+        assertEquals(RecoveryFileType.Audio, FileSignatureDetector.detect(ByteArrayInputStream(header("M4A "))))
         assertEquals(RecoveryFileType.Photo, FileSignatureDetector.detect(ByteArrayInputStream(header("avif"))))
         assertEquals(RecoveryFileType.Video, FileSignatureDetector.detect(ByteArrayInputStream(header("mp42"))))
     }
