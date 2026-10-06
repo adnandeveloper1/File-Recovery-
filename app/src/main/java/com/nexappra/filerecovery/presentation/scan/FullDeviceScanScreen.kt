@@ -154,6 +154,9 @@ fun FullDeviceScanRoute(onBack: () -> Unit, onNavigateToResults: (String) -> Uni
                     }
                 }
                 Text(stageLabel(state.currentLocation?.type), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (state.mode == RecoveryScanMode.Deep) {
+                    Text("Scanning storage: ${java.text.NumberFormat.getIntegerInstance().format(state.totalItemsScanned)} files inspected", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Medium)
+                }
                 Text("Results appear as they are found. You can stop and browse at any time.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Button(onClick = { viewModel.finishEarly() }, enabled = state.totalFilesFound > 0 && !state.isStopping, modifier = Modifier.fillMaxWidth()) { Text("View ${state.totalFilesFound} results") }
                 TextButton(onClick = viewModel::stopScan, enabled = !state.isStopping, modifier = Modifier.fillMaxWidth()) { Text("Cancel scan") }

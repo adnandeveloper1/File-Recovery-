@@ -64,34 +64,52 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
         var lastPublish = 0L
         var partial = false
 
+        var photoCount = 0
+        var videoCount = 0
+        var audioCount = 0
+        var hiddenPhotoCount = 0
+        var hiddenVideoCount = 0
+
         fun session() = RecoveryScanSession(id, mode, selectedCategory, SystemClock.elapsedRealtime() - started,
             bytes, files.values.toList(), locations, System.currentTimeMillis(), partial, warnings.toList())
 
         suspend fun publish(force: Boolean = false, complete: Boolean = false) {
             val now = SystemClock.elapsedRealtime()
-            if (!force && now - lastPublish < 200L) return
+            if (!force && now - lastPublish < 250L) return
             lastPublish = now
-            sessions[id] = session()
+            if (complete) sessions[id] = session()
             val counts = mapOf(RecoveryResultFilter.All to files.size,
-                RecoveryResultFilter.Photos to files.values.count { it.fileType == RecoveryFileType.Photo },
-                RecoveryResultFilter.Videos to files.values.count { it.fileType == RecoveryFileType.Video },
-                RecoveryResultFilter.Audio to files.values.count { it.fileType == RecoveryFileType.Audio })
+                RecoveryResultFilter.Photos to photoCount,
+                RecoveryResultFilter.Videos to videoCount,
+                RecoveryResultFilter.Audio to audioCount)
             onSnapshot(RecoveryScanSnapshot(mode, selectedCategory,
                 if (complete) { if (files.isEmpty()) RecoveryScanStatus.CompletedEmpty else RecoveryScanStatus.Completed } else RecoveryScanStatus.Scanning,
                 if (complete) 1f else null, inspected, files.size,
-                files.values.count { it.isHidden && it.fileType == RecoveryFileType.Photo },
-                files.values.count { it.isHidden && it.fileType == RecoveryFileType.Video }, bytes, null,
+                hiddenPhotoCount, hiddenVideoCount, bytes, null,
                 locations.firstOrNull { it.type == currentStage }, locations,
                 locations.count { it.status == ScanLocationStatus.Completed }, counts, now - started,
-                sessionId = id, previewFiles = files.values.take(18)))
+                sessionId = id, previewFiles = files.values.take(18).toList()))
         }
 
         suspend fun record(file: RecoverableFile) {
-            coroutineContext.ensureActive()
             inspected++
-            if (file.sizeBytes <= 0 || file.fileType !in policy.types) return
-            if (files.putIfAbsent(file.id, file) == null) bytes += file.sizeBytes
-            publish()
+            if (file.sizeBytes <= 0 || file.fileType !in policy.types) {
+                if (inspected % 500 == 0) coroutineContext.ensureActive()
+                return
+            }
+            if (files.putIfAbsent(file.id, file) == null) {
+                bytes += file.sizeBytes
+                when (file.fileType) {
+                    RecoveryFileType.Photo -> { photoCount++; if (file.isHidden) hiddenPhotoCount++ }
+                    RecoveryFileType.Video -> { videoCount++; if (file.isHidden) hiddenVideoCount++ }
+                    RecoveryFileType.Audio -> audioCount++
+                    else -> {}
+                }
+            }
+            if (inspected % 50 == 0) {
+                coroutineContext.ensureActive()
+                publish()
+            }
         }
 
         suspend fun stage(type: RecoveryScanLocationType, action: suspend () -> Unit) {
