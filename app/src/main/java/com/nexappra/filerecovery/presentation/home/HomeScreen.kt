@@ -65,16 +65,8 @@ fun HomeScreen(uiState: HomeUiState, onCategoryClick: (RecoveryCategory) -> Unit
                 CategoryTile("Photos", "JPG, PNG, HEIC + more", Icons.Rounded.PhotoLibrary, Color(0xFFDBEAFE), Modifier.weight(1f)) { onCategoryClick(RecoveryCategory.Photos) }
                 CategoryTile("Videos", "MP4, MOV, MKV + more", Icons.Rounded.VideoLibrary, Color(0xFFEDE7F9), Modifier.weight(1f)) { onCategoryClick(RecoveryCategory.Videos) }
             }
-            FlowPanel(Modifier.fillMaxWidth().clickable { onCategoryClick(RecoveryCategory.Audio) }) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Icon(Icons.Rounded.Audiotrack, "Audio", tint = RecoveryInk, modifier = Modifier.size(28.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text("Audio", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                        Text("MP3, M4A, WAV and more", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    Icon(Icons.AutoMirrored.Rounded.ArrowForward, "Scan audio", tint = MaterialTheme.colorScheme.primary)
-                }
-            }
+            Spacer(Modifier.height(0.dp))
+            CategoryTile("Audio", "MP3, M4A, WAV, Voice Notes", Icons.Rounded.Audiotrack, Color(0xFFFCE7F3), Modifier.fillMaxWidth()) { onCategoryClick(RecoveryCategory.Audio) }
         }
         item {
             FlowPanel(Modifier.fillMaxWidth().clickable(onClick = onDeepScan)) {
