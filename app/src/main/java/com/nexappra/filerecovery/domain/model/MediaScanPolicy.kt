@@ -31,7 +31,7 @@ data class MediaScanPolicy(val category: RecoveryCategory? = null) {
 
     companion object {
         val imageExtensions = setOf("jpg", "jpeg", "png", "webp", "gif", "bmp", "heic", "heif", "avif", "dng", "tif", "tiff", "svg", "ico", "raw")
-        val videoExtensions = setOf("mp4", "m4v", "mkv", "3gp", "3gpp", "webm", "mov", "avi", "mpeg", "mpg", "ts")
+        val videoExtensions = setOf("mp4", "m4v", "mkv", "3gp", "3gpp", "webm", "mov", "avi", "mpeg", "mpg", "ts", "flv", "wmv", "asf", "3g2", "3gp2", "vob", "ogv", "m2ts", "mts", "divx", "f4v", "m2v")
         val audioExtensions = setOf("mp3", "m4a", "aac", "wav", "flac", "ogg", "opus", "amr", "mid", "midi", "wma")
 
         fun classify(name: String, mime: String?): RecoveryFileType? {

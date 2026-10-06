@@ -33,6 +33,8 @@ internal object FileSignatureDetector {
             header.asciiAt(0, "GIF87a") || header.asciiAt(0, "GIF89a") -> photo("image/gif")
             header.asciiAt(0, "RIFF") && header.asciiAt(8, "WEBP") -> photo("image/webp")
             header.asciiAt(0, "RIFF") && header.asciiAt(8, "AVI ") -> video("video/x-msvideo")
+            header.startsWith(0x1A, 0x45, 0xDF, 0xA3) -> video("video/webm")
+            header.asciiAt(0, "FLV") -> video("video/x-flv")
             header.asciiAt(0, "BM") && count >= 14 -> photo("image/bmp")
             header.startsWith(0x49, 0x49, 0x2A, 0x00) || header.startsWith(0x4D, 0x4D, 0x00, 0x2A) -> photo("image/tiff")
             header.asciiAt(0, "%PDF") -> Signature(RecoveryFileType.Document, "application/pdf")
@@ -42,8 +44,8 @@ internal object FileSignatureDetector {
                 header.hasBrand("heic", "heix", "hevc", "hevx") -> photo("image/heic")
                 header.hasBrand("mif1", "msf1") -> photo("image/heif")
                 header.asciiAt(8, "qt  ") -> video("video/quicktime")
-                listOf("3gp4", "3gp5", "3gp6").any { header.asciiAt(8, it) } -> video("video/3gpp")
-                listOf("isom", "iso2", "mp41", "mp42", "avc1", "M4V ").any { header.asciiAt(8, it) } -> video("video/mp4")
+                listOf("3gp4", "3gp5", "3gp6", "3gp7", "3g2a", "kddi").any { header.asciiAt(8, it) } -> video("video/3gpp")
+                listOf("isom", "iso2", "iso3", "iso4", "iso5", "iso6", "mp41", "mp42", "avc1", "M4V ", "m4v ", "dash", "ndas", "mp71", "MSNV", "mmp4", "f4v ", "f4p ").any { header.asciiAt(8, it) } -> video("video/mp4")
                 else -> null
             }
             header.asciiAt(0, "ID3") || header.hasMpegAudioFrame() -> Signature(RecoveryFileType.Audio, "audio/mpeg")
