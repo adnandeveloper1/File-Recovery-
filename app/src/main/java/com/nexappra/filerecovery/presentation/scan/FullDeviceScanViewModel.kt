@@ -41,7 +41,7 @@ class FullDeviceScanViewModel @Inject constructor(
 
     fun onAccessStateChanged(access: DeviceScanAccessState) {
         mutableState.update { it.copy(permissions = access.permissions, accessLevel = access.accessLevel, accessSummary = access.summary) }
-        if (!started && mode == RecoveryScanMode.Quick) startScan()
+        if (!started && hasAccess()) startScan()
     }
 
     fun selectDeepCategory(selected: RecoveryCategory) {

@@ -14,6 +14,7 @@
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" tools:ignore="ScopedStorage" />
 
     <application
         android:name=".FileRecoveryApplication"
@@ -25,6 +26,7 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:usesCleartextTraffic="false"
+        android:requestLegacyExternalStorage="true"
         android:theme="@style/Theme.FILERECOVERY">
         <activity
             android:name=".MainActivity"
