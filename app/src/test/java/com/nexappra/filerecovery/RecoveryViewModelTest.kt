@@ -59,7 +59,7 @@ class RecoveryViewModelTest {
         val repo = Repository()
         val saved = SavedStateHandle(mapOf(AppDestination.FullDeviceScan.ArgMode to "Deep"))
         val vm = FullDeviceScanViewModel(repo, Premium(true), saved)
-        assertEquals(RecoveryCategory.Photos, vm.uiState.value.selectedCategory)
+        assertNull(vm.uiState.value.selectedCategory)
         vm.selectDeepCategory(RecoveryCategory.Audio)
         val restored = FullDeviceScanViewModel(repo, Premium(true), saved)
         assertEquals(RecoveryCategory.Audio, restored.uiState.value.selectedCategory)
@@ -87,8 +87,21 @@ class RecoveryViewModelTest {
         val vm = FullDeviceScanViewModel(repo, Premium(true), SavedStateHandle(mapOf(AppDestination.FullDeviceScan.ArgMode to "Deep")))
         vm.onAccessStateChanged(DeviceScanAccessState(DeviceScanPermissions(fullImagesAccess = true, fullVideosAccess = true, partialVisualAccess = true)))
         assertTrue(vm.uiState.value.canStartFullDeviceScan)
+        runCurrent()
+        assertEquals(0, repo.scans)
+        vm.selectDeepCategory(RecoveryCategory.Videos)
         vm.startScan(); runCurrent()
         assertEquals(1, repo.scans)
+        assertEquals(RecoveryCategory.Videos, repo.category)
+    }
+
+    @Test fun allMediaScanAcceptsAudioOnlyPermission() = runTest(dispatcher) {
+        val repo = Repository()
+        val vm = FullDeviceScanViewModel(repo, Premium(false), SavedStateHandle())
+        vm.onAccessStateChanged(DeviceScanAccessState(DeviceScanPermissions(audioAccess = true)))
+        runCurrent()
+        assertEquals(1, repo.scans)
+        assertNull(repo.category)
     }
 
     @Test fun deepScanRequiresAccessForItsSelectedCategory() = runTest(dispatcher) {
@@ -170,7 +183,10 @@ class RecoveryViewModelTest {
         })
         val state = SavedStateHandle(mapOf(AppDestination.FullRecoveryResults.ArgSessionId to "session"))
         val vm = FullRecoveryResultsViewModel(state, repo, Premium(true))
-        runCurrent(); vm.selectVisible()
+        runCurrent()
+        assertEquals(10_000, vm.uiState.value.totalFound)
+        assertEquals(10_000, vm.uiState.value.visibleFiles.size)
+        vm.selectVisible()
         assertEquals(10_000, vm.uiState.value.selectedIds.size)
         assertNull(state.get<ArrayList<String>>("selected_ids"))
         val indices = checkNotNull(state.get<IntArray>("selected_indices"))

@@ -63,6 +63,20 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
         var bytes = 0L
         var lastPublish = 0L
         var partial = false
+        val failedStages = mutableSetOf<RecoveryScanLocationType>()
+
+        fun readFailed(error: Exception) {
+            partial = true
+            failedStages += currentStage
+            warnings += if (error is SecurityException) "Some locations need additional access. Results include the files Android allowed this app to read."
+                else "One storage location could not be read. Other available results are shown."
+        }
+
+        suspend fun readLocation(action: suspend () -> Unit) {
+            try { action() }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) { readFailed(error) }
+        }
 
         var photoCount = 0
         var videoCount = 0
@@ -124,35 +138,29 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
             locations = locations.map { if (it.type == type) it.copy(status = ScanLocationStatus.Scanning) else it }
             publish(force = true)
             val before = files.size
-            var success = true
-            try { action() }
-            catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: SecurityException) { success = false; warnings += "Some locations need additional access. Results include the files Android allowed this app to read." }
-            catch (_: Exception) { success = false; warnings += "One storage location could not be read. Other available results are shown." }
-            locations = locations.map { if (it.type == type) it.copy(status = if (success) ScanLocationStatus.Completed else ScanLocationStatus.Failed, foundCount = files.size - before) else it }
+            readLocation(action)
+            locations = locations.map { if (it.type == type) it.copy(status = if (type !in failedStages) ScanLocationStatus.Completed else ScanLocationStatus.Failed, foundCount = files.size - before) else it }
             publish(force = true)
         }
 
         try {
             publish(force = true)
-            val completed = withTimeoutOrNull(if (mode == RecoveryScanMode.Deep) 3_600_000L else 30_000L) {
+            val completed = withTimeoutOrNull(3_600_000L) {
                 policy.types.forEach { type ->
                     stage(locationFor(type)) {
                         val volumes = if (Build.VERSION.SDK_INT >= 29) MediaStore.getExternalVolumeNames(context).toList() else listOf("external")
                         volumes.forEach { volume ->
-                            try { scanMediaCollection(volume, type, policy, ::record) }
-                            catch (cancelled: CancellationException) { throw cancelled }
-                            catch (_: SecurityException) { warnings += "Access to some media is limited. You can change category access in app permissions." }
+                            readLocation { scanMediaCollection(volume, type, policy, ::record) }
                         }
                     }
                 }
                 if (mode == RecoveryScanMode.Deep) {
                     stage(RecoveryScanLocationType.AuthorizedFolders) {
                         resolver.persistedUriPermissions.filter { it.isReadPermission && DocumentsContract.isTreeUri(it.uri) }
-                            .forEach { permission -> scanTree(permission.uri, policy, ::record) }
+                            .forEach { permission -> readLocation { scanTree(permission.uri, policy, ::readFailed, ::record) } }
                     }
                     stage(RecoveryScanLocationType.AccessibleStorage) {
-                        scanDirectories(policy, ::record)
+                        scanDirectories(policy, ::readFailed, ::record)
                     }
                 }
                 true
@@ -190,7 +198,7 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
             putString(ContentResolver.QUERY_ARG_SQL_SORT_ORDER, "${MediaStore.MediaColumns.DATE_MODIFIED} DESC")
             if (Build.VERSION.SDK_INT >= 30) putInt(MediaStore.QUERY_ARG_MATCH_TRASHED, MediaStore.MATCH_INCLUDE)
         }
-        query(uri, projection.toTypedArray(), args)?.use { cursor ->
+        (query(uri, projection.toTypedArray(), args) ?: throw java.io.IOException("Media query failed")).use { cursor ->
             val idIndex = cursor.getColumnIndexOrThrow("_id")
             val nameIndex = cursor.getColumnIndexOrThrow("_display_name")
             val mimeIndex = cursor.getColumnIndexOrThrow("mime_type")
@@ -208,13 +216,19 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
                 val trashed = trashIndex >= 0 && cursor.getInt(trashIndex) == 1
                 val fileUri = ContentUris.withAppendedId(uri, cursor.getLong(idIndex))
                 record(mediaFile(fileUri, name, mime, cursor.getLong(sizeIndex), cursor.getLong(dateIndex) * 1000L,
-                    path, type, volume, trashed, duration = if (durationIndex >= 0) cursor.getLong(durationIndex) else null))
+                    if (Build.VERSION.SDK_INT < 29) path.substringBeforeLast('/', "") else path,
+                    type, volume, trashed, duration = if (durationIndex >= 0) cursor.getLong(durationIndex) else null,
+                    identity = when {
+                        pathIndex < 0 || cursor.isNull(pathIndex) -> fileUri.toString()
+                        Build.VERSION.SDK_INT < 29 -> MediaFileIdentity.absolute(path, Environment.getExternalStorageDirectory().path) ?: fileUri.toString()
+                        else -> null
+                    }))
             }
         }
     }
 
     /** One provider query per directory, avoiding DocumentFile's per-property IPC calls. */
-    private suspend fun scanTree(tree: Uri, policy: MediaScanPolicy, record: suspend (RecoverableFile) -> Unit) {
+    private suspend fun scanTree(tree: Uri, policy: MediaScanPolicy, onReadError: (Exception) -> Unit, record: suspend (RecoverableFile) -> Unit) {
         val queue = ArrayDeque<Pair<String, Int>>()
         val visited = HashSet<String>()
         queue.add(DocumentsContract.getTreeDocumentId(tree) to 0)
@@ -224,73 +238,79 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
             val (parent, depth) = queue.removeFirst()
             if (depth > 32 || !visited.add(parent)) continue
             val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, parent)
-            query(children, projection, Bundle())?.use { c ->
-                while (c.moveToNext()) {
-                    coroutineContext.ensureActive()
-                    val id = c.getString(0)
-                    val name = c.getString(1).orEmpty()
-                    val mime = c.getString(2)
-                    if (mime == DocumentsContract.Document.MIME_TYPE_DIR) {
-                        if (name !in setOf(".git", "node_modules", "Android")) queue.add(id to depth + 1)
-                    } else {
-                        val uri = DocumentsContract.buildDocumentUriUsingTree(tree, id)
-                        val known = MediaScanPolicy.classify(name, mime)
-                        // DocumentsProvider maps .cache to chemical/x-cache based on the suffix.
-                        // Confirm ambiguous cache content using its bytes instead of rejecting it.
-                        val inferred = if (known == null && policy.shouldReadHeader(name, mime)) {
-                            try { resolver.openInputStream(uri)?.use { FileSignatureDetector.inspect(it) } }
-                            catch (_: java.io.IOException) { null } catch (_: SecurityException) { null }
-                        } else null
-                        val type = known ?: inferred?.type
-                        if (type != null && type in policy.types) record(mediaFile(uri, name, inferred?.mimeType ?: mime, c.getLong(3), c.getLong(4), parent,
-                            type, "folder", false, fromFolder = true))
+            try {
+                (query(children, projection, Bundle()) ?: throw java.io.IOException("Folder query failed")).use { c ->
+                    while (c.moveToNext()) {
+                        coroutineContext.ensureActive()
+                        val id = c.getString(0)
+                        val name = c.getString(1).orEmpty()
+                        val mime = c.getString(2)
+                        if (mime == DocumentsContract.Document.MIME_TYPE_DIR) {
+                            if (name !in setOf(".git", "node_modules", "Android")) queue.add(id to depth + 1)
+                        } else {
+                            val uri = DocumentsContract.buildDocumentUriUsingTree(tree, id)
+                            val known = MediaScanPolicy.classify(name, mime)
+                            // DocumentsProvider maps .cache to chemical/x-cache based on the suffix.
+                            // Confirm ambiguous cache content using its bytes instead of rejecting it.
+                            val inferred = if (known == null && policy.shouldReadHeader(name, mime)) {
+                                try { resolver.openInputStream(uri)?.use { FileSignatureDetector.inspect(it) } }
+                                catch (_: java.io.IOException) { null } catch (_: SecurityException) { null }
+                            } else null
+                            val type = known ?: inferred?.type
+                            if (type != null && type in policy.types) record(mediaFile(uri, name, inferred?.mimeType ?: mime, c.getLong(3), c.getLong(4), parent,
+                                type, "folder", false, fromFolder = true,
+                                identity = MediaFileIdentity.document(tree.authority, id, Environment.getExternalStorageDirectory().path)))
+                        }
                     }
                 }
-            }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) { onReadError(error) }
         }
     }
 
-    private suspend fun scanDirectories(policy: MediaScanPolicy, record: suspend (RecoverableFile) -> Unit) {
+    private suspend fun scanDirectories(policy: MediaScanPolicy, onReadError: (Exception) -> Unit, record: suspend (RecoverableFile) -> Unit) {
         val storageRoot = Environment.getExternalStorageDirectory()
-        val queue = ArrayDeque<Pair<File, Int>>()
-        if (storageRoot != null && storageRoot.exists()) {
-            queue.add(storageRoot to 0)
-        }
-        val androidMedia = File(storageRoot, "Android/media")
-        if (androidMedia.exists() && androidMedia.isDirectory) queue.add(androidMedia to 0)
+        val roots = linkedSetOf(storageRoot)
         context.getExternalFilesDirs(null)?.forEach { ext ->
             if (ext != null) {
                 val prefix = ext.path.substringBefore("/Android/")
-                val sdRoot = File(prefix)
-                if (sdRoot.exists() && sdRoot.isDirectory && sdRoot != storageRoot) queue.add(sdRoot to 0)
+                roots += File(prefix)
             }
         }
+        val queue = ArrayDeque<Triple<File, File, Int>>()
+        roots.forEach { root ->
+            if (root.isDirectory) queue.add(Triple(root, root, 0))
+            val androidMedia = File(root, "Android/media")
+            if (androidMedia.isDirectory) queue.add(Triple(root, androidMedia, 0))
+        }
         val visited = HashSet<String>()
-        val rootPrefix = try { storageRoot.canonicalPath } catch (_: Exception) { storageRoot.path }
-        val rootPath = storageRoot.path
         while (queue.isNotEmpty()) {
             coroutineContext.ensureActive()
-            val (directory, depth) = queue.removeFirst()
+            val (root, directory, depth) = queue.removeFirst()
             val canonical = try { directory.canonicalPath } catch (_: Exception) { directory.path }
-            val isUnderRoot = canonical.startsWith(rootPrefix) || canonical.startsWith(rootPath) || canonical.startsWith("/storage/")
+            val rootPrefix = try { root.canonicalPath } catch (_: Exception) { root.path }
+            val isUnderRoot = canonical == rootPrefix || canonical.startsWith("$rootPrefix/")
             if (depth > 32 || !isUnderRoot || !visited.add(canonical)) continue
-            directory.listFiles()?.forEach { file ->
-                coroutineContext.ensureActive()
-                val path = file.path
-                if (file.isDirectory) {
-                    if (file.name != "Android" || path.endsWith("Android/media") || path.endsWith("Android\\media")) {
-                        queue.add(file to depth + 1)
+            try {
+                (directory.listFiles() ?: throw java.io.IOException("Directory could not be read")).forEach { file ->
+                    coroutineContext.ensureActive()
+                    val path = file.path
+                    if (file.isDirectory) {
+                        if (file.name != "Android" || path.endsWith("Android/media") || path.endsWith("Android\\media")) {
+                            queue.add(Triple(root, file, depth + 1))
+                        }
+                        return@forEach
                     }
-                    return@forEach
+                    if (!file.isFile || file.length() <= 0L || file.name == ".nomedia") return@forEach
+                    val known = MediaScanPolicy.classify(file.name, null)
+                    val inferred = if (known == null && policy.shouldReadHeader(file.name)) FileSignatureDetector.inspect(file) else null
+                    val type = known ?: inferred?.type
+                    if (type !in policy.types || type == null) return@forEach
+                    record(mediaFile(Uri.fromFile(file), file.name, inferred?.mimeType, file.length(), file.lastModified(),
+                        file.parentFile!!.relativeTo(root).path, type, if (root == storageRoot) "external_primary" else root.name, false))
                 }
-                if (!file.isFile || file.length() <= 0L || file.name == ".nomedia") return@forEach
-                val known = MediaScanPolicy.classify(file.name, null)
-                val inferred = if (known == null && policy.shouldReadHeader(file.name)) FileSignatureDetector.inspect(file) else null
-                val type = known ?: inferred?.type
-                if (type !in policy.types || type == null) return@forEach
-                record(mediaFile(Uri.fromFile(file), file.name, inferred?.mimeType, file.length(), file.lastModified(),
-                    file.parentFile!!.relativeTo(storageRoot).path, type, "external_primary", false))
-            }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) { onReadError(error) }
         }
     }
 
@@ -308,7 +328,7 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
     }
 
     private fun mediaFile(uri: Uri, name: String, mime: String?, size: Long, modified: Long, path: String,
-        type: RecoveryFileType, volume: String, trashed: Boolean, duration: Long? = null, fromFolder: Boolean = false): RecoverableFile {
+        type: RecoveryFileType, volume: String, trashed: Boolean, duration: Long? = null, fromFolder: Boolean = false, identity: String? = null): RecoverableFile {
         val hidden = name.startsWith(".") || path.split('/', '\\').any { it.startsWith(".") }
         val sources = buildSet {
             if (trashed) add(RecoveryFileSource.RecycleBin)
@@ -320,7 +340,7 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
             if (isEmpty()) add(RecoveryFileSource.Other)
         }
         val normalizedPath = path.replace('\\', '/').trim('/')
-        val key = if (normalizedPath.isBlank() || fromFolder) uri.toString() else "$volume/$normalizedPath/$name"
+        val key = identity ?: if (fromFolder) uri.toString() else MediaFileIdentity.storage(volume, normalizedPath, name)
         return RecoverableFile(key, uri.toString(), name, mime ?: android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(name.substringAfterLast('.').lowercase()),
             size, modified, path, type, sources, hidden, if (hidden) RecoveryFileHiddenReason.HiddenDirectory else null, trashed, volume, duration)
     }

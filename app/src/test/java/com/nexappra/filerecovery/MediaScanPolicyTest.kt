@@ -22,8 +22,8 @@ class MediaScanPolicyTest {
         assertTrue(audio.accepts("voice.m4a", "application/octet-stream"))
         assertFalse(audio.accepts("photo.png", "image/png"))
         assertFalse(audio.accepts("movie.mp4", "video/mp4"))
-        assertEquals(setOf(RecoveryFileType.Photo, RecoveryFileType.Video), MediaScanPolicy().types)
-        assertFalse(MediaScanPolicy().accepts("voice.mp3", null))
+        assertEquals(setOf(RecoveryFileType.Photo, RecoveryFileType.Video, RecoveryFileType.Audio), MediaScanPolicy().types)
+        assertTrue(MediaScanPolicy().accepts("voice.mp3", null))
         assertFalse(MediaScanPolicy().accepts("backup.zip", null))
     }
     @Test(expected = IllegalArgumentException::class) fun unsupportedCategoryCannotStartVisualScan() { MediaScanPolicy(RecoveryCategory.Documents) }

@@ -24,7 +24,7 @@ data class DeviceScanPermissions(
         RecoveryCategory.Photos -> fullImagesAccess || partialVisualAccess
         RecoveryCategory.Videos -> fullVideosAccess || partialVisualAccess
         RecoveryCategory.Audio -> audioAccess
-        else -> fullImagesAccess || fullVideosAccess || partialVisualAccess
+        else -> fullImagesAccess || fullVideosAccess || partialVisualAccess || audioAccess
     }
 
     fun canScan(category: RecoveryCategory?, mode: RecoveryScanMode): Boolean =

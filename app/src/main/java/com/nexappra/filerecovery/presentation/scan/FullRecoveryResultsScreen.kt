@@ -111,7 +111,7 @@ fun FullRecoveryResultsRoute(onBack: () -> Unit, onOpenPremium: () -> Unit = {},
             if (!state.isLoading && !state.hasMissingSession && state.errorMessage == null) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text(if (state.isPartial) "Scan stopped early. Your found files are ready." else "Preview first. Recover the files you choose.", fontWeight = FontWeight.SemiBold)
+                        Text(if (state.isPartial) "Partial scan. Your found files are ready." else "Preview first. Recover the files you choose.", fontWeight = FontWeight.SemiBold)
                         Text("Includes existing media and any accessible hidden or trashed copies. Files erased from storage cannot be recreated.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         state.warnings.forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                         OutlinedButton(enabled = !state.isRecovering, onClick = {
