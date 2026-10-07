@@ -82,12 +82,19 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
                 RecoveryResultFilter.Photos to photoCount,
                 RecoveryResultFilter.Videos to videoCount,
                 RecoveryResultFilter.Audio to audioCount)
+            val completedCount = locations.count { it.status == ScanLocationStatus.Completed }
+            val currentProgress = if (complete) 1f else {
+                val base = if (stages.isNotEmpty()) completedCount.toFloat() / stages.size else 0f
+                val step = if (stages.isNotEmpty()) 1f / stages.size else 0.5f
+                val factor = 1f - 1f / (1f + (inspected.toFloat() / 250f))
+                (base + step * factor).coerceIn(0.05f, 0.98f)
+            }
             onSnapshot(RecoveryScanSnapshot(mode, selectedCategory,
                 if (complete) { if (files.isEmpty()) RecoveryScanStatus.CompletedEmpty else RecoveryScanStatus.Completed } else RecoveryScanStatus.Scanning,
-                if (complete) 1f else null, inspected, files.size,
+                currentProgress, inspected, files.size,
                 hiddenPhotoCount, hiddenVideoCount, bytes, null,
                 locations.firstOrNull { it.type == currentStage }, locations,
-                locations.count { it.status == ScanLocationStatus.Completed }, counts, now - started,
+                completedCount, counts, now - started,
                 sessionId = id, previewFiles = files.values.take(18).toList()))
         }
 
@@ -246,19 +253,27 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
     private suspend fun scanDirectories(policy: MediaScanPolicy, record: suspend (RecoverableFile) -> Unit) {
         val storageRoot = Environment.getExternalStorageDirectory()
         val queue = ArrayDeque<Pair<File, Int>>()
-        storageRoot.listFiles()?.forEach { file ->
-            if (file.isDirectory && file.name != "Android") queue.add(file to 0)
+        if (storageRoot != null && storageRoot.exists()) {
+            queue.add(storageRoot to 0)
         }
         val androidMedia = File(storageRoot, "Android/media")
         if (androidMedia.exists() && androidMedia.isDirectory) queue.add(androidMedia to 0)
-
+        context.getExternalFilesDirs(null)?.forEach { ext ->
+            if (ext != null) {
+                val prefix = ext.path.substringBefore("/Android/")
+                val sdRoot = File(prefix)
+                if (sdRoot.exists() && sdRoot.isDirectory && sdRoot != storageRoot) queue.add(sdRoot to 0)
+            }
+        }
         val visited = HashSet<String>()
-        val rootPrefix = storageRoot.canonicalPath + File.separator
+        val rootPrefix = try { storageRoot.canonicalPath } catch (_: Exception) { storageRoot.path }
+        val rootPath = storageRoot.path
         while (queue.isNotEmpty()) {
             coroutineContext.ensureActive()
             val (directory, depth) = queue.removeFirst()
             val canonical = try { directory.canonicalPath } catch (_: Exception) { directory.path }
-            if (depth > 32 || !canonical.startsWith(rootPrefix) || !visited.add(canonical)) continue
+            val isUnderRoot = canonical.startsWith(rootPrefix) || canonical.startsWith(rootPath) || canonical.startsWith("/storage/")
+            if (depth > 32 || !isUnderRoot || !visited.add(canonical)) continue
             directory.listFiles()?.forEach { file ->
                 coroutineContext.ensureActive()
                 val path = file.path

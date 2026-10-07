@@ -12,7 +12,7 @@ data class MediaScanPolicy(val category: RecoveryCategory? = null) {
         RecoveryCategory.Photos -> setOf(RecoveryFileType.Photo)
         RecoveryCategory.Videos -> setOf(RecoveryFileType.Video)
         RecoveryCategory.Audio -> setOf(RecoveryFileType.Audio)
-        else -> setOf(RecoveryFileType.Photo, RecoveryFileType.Video)
+        else -> setOf(RecoveryFileType.Photo, RecoveryFileType.Video, RecoveryFileType.Audio)
     }
 
     fun accepts(name: String, mime: String?): Boolean = classify(name, mime) in types
@@ -20,10 +20,8 @@ data class MediaScanPolicy(val category: RecoveryCategory? = null) {
     fun shouldReadHeader(name: String): Boolean {
         if (!name.contains('.')) return true
         val ext = name.substringAfterLast('.', "").lowercase(Locale.ROOT)
-        if (ext in setOf("", "cache", "tmp", "dat", "bin", "thumb", "cnt", "idx", "p", "exo", "0", "1", "2", "file", "temp", "noext", "chunk", "opus", "aac", "m4a", "amr", "ogg", "mp3", "wav", "nomedia")) return true
-        if (ext.all { it.isDigit() }) return true
-        if (name.contains("thumb", ignoreCase = true) || name.contains("cache", ignoreCase = true) || name.contains("voice", ignoreCase = true) || name.contains("audio", ignoreCase = true) || name.contains("record", ignoreCase = true) || name.contains("ptt", ignoreCase = true) || name.startsWith(".")) return true
-        return false
+        val nonMedia = setOf("txt", "pdf", "apk", "zip", "tar", "gz", "7z", "rar", "dex", "so", "xml", "json", "html", "css", "js", "ts", "class", "java", "kt", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "db", "sqlite")
+        return ext !in nonMedia
     }
 
     fun shouldReadHeader(name: String, mime: String?): Boolean = shouldReadHeader(name) &&

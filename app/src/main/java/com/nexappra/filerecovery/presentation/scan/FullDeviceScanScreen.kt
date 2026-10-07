@@ -88,8 +88,8 @@ fun FullDeviceScanRoute(onBack: () -> Unit, onNavigateToResults: (String) -> Uni
         } else if (!state.isActiveScan && state.sessionId.isBlank() && state.scanStatus != RecoveryScanStatus.Error) {
             item { FlowPanel(Modifier.fillMaxWidth()) {
                 if (state.mode == RecoveryScanMode.Deep) {
-                    DeepScanCategoryPicker(state.selectedCategory ?: RecoveryCategory.Photos, viewModel::selectDeepCategory)
-                    FeatureLine(Icons.Rounded.FolderOpen, "Choose your deep scan access", "Search permitted media and chosen folders for ${state.selectedCategory?.name?.lowercase() ?: "photos"} only. Choose a folder to include readable hidden and cached copies.")
+                    DeepScanCategoryPicker(state.selectedCategory, viewModel::selectDeepCategory)
+                    FeatureLine(Icons.Rounded.FolderOpen, "Choose your deep scan access", "Search permitted media and chosen folders for ${state.selectedCategory?.name?.lowercase() ?: "all photos, videos and audio"}. Choose a folder to include readable hidden and cached copies.")
                 } else {
                     FeatureLine(Icons.Rounded.FolderOpen, "Choose your scan access", "Allow access to the selected media category. Android may limit the results you can scan.")
                 }
@@ -233,10 +233,11 @@ fun FullDeviceScanRoute(onBack: () -> Unit, onNavigateToResults: (String) -> Uni
 }
 
 @Composable
-internal fun DeepScanCategoryPicker(selected: RecoveryCategory, onSelect: (RecoveryCategory) -> Unit) {
+internal fun DeepScanCategoryPicker(selected: RecoveryCategory?, onSelect: (RecoveryCategory?) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("What do you want to find?", style = MaterialTheme.typography.titleSmall)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(selected = selected == null, onClick = { onSelect(null) }, label = { Text("All Media") })
             listOf(RecoveryCategory.Photos, RecoveryCategory.Videos, RecoveryCategory.Audio).forEach { category ->
                 FilterChip(selected = selected == category, onClick = { onSelect(category) }, label = { Text(category.name) })
             }
@@ -246,11 +247,10 @@ internal fun DeepScanCategoryPicker(selected: RecoveryCategory, onSelect: (Recov
 
 internal fun mediaPermissions(category: RecoveryCategory?): Array<String> = when {
     Build.VERSION.SDK_INT >= 33 -> buildList {
-        if (category == RecoveryCategory.Audio) add(Manifest.permission.READ_MEDIA_AUDIO) else {
-            if (category != RecoveryCategory.Videos) add(Manifest.permission.READ_MEDIA_IMAGES)
-            if (category != RecoveryCategory.Photos) add(Manifest.permission.READ_MEDIA_VIDEO)
-            if (Build.VERSION.SDK_INT >= 34) add(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)
-        }
+        if (category == null || category == RecoveryCategory.Audio) add(Manifest.permission.READ_MEDIA_AUDIO)
+        if (category == null || category != RecoveryCategory.Videos) add(Manifest.permission.READ_MEDIA_IMAGES)
+        if (category == null || category != RecoveryCategory.Photos) add(Manifest.permission.READ_MEDIA_VIDEO)
+        if (Build.VERSION.SDK_INT >= 34) add(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)
     }.toTypedArray()
     else -> arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
 }

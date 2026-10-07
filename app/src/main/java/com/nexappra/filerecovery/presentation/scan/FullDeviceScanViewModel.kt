@@ -27,7 +27,6 @@ class FullDeviceScanViewModel @Inject constructor(
     private val mode = if (savedStateHandle.get<String>(AppDestination.FullDeviceScan.ArgMode) == "Deep") RecoveryScanMode.Deep else RecoveryScanMode.Quick
     private var category = savedStateHandle.get<String>(AppDestination.FullDeviceScan.ArgCategory)
         ?.let { name -> listOf(RecoveryCategory.Photos, RecoveryCategory.Videos, RecoveryCategory.Audio).firstOrNull { it.name == name } }
-        ?: if (mode == RecoveryScanMode.Deep) RecoveryCategory.Photos else null
     private val mutableState = MutableStateFlow(FullDeviceScanUiState(selectedCategory = category, mode = mode))
     val uiState = mutableState.asStateFlow()
     private val navigation = Channel<FullDeviceScanNavigationEvent>(Channel.BUFFERED)
@@ -44,11 +43,14 @@ class FullDeviceScanViewModel @Inject constructor(
         if (!started && hasAccess()) startScan()
     }
 
-    fun selectDeepCategory(selected: RecoveryCategory) {
+    fun selectDeepCategory(selected: RecoveryCategory?) {
         if (mode != RecoveryScanMode.Deep || started || scanJob?.isActive == true || uiState.value.isStopping) return
-        if (selected !in listOf(RecoveryCategory.Photos, RecoveryCategory.Videos, RecoveryCategory.Audio)) return
         category = selected
-        savedStateHandle[AppDestination.FullDeviceScan.ArgCategory] = selected.name
+        if (selected != null) {
+            savedStateHandle[AppDestination.FullDeviceScan.ArgCategory] = selected.name
+        } else {
+            savedStateHandle.remove<String>(AppDestination.FullDeviceScan.ArgCategory)
+        }
         mutableState.update { it.copy(selectedCategory = selected) }
     }
 
