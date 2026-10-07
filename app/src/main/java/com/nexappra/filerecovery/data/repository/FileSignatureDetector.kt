@@ -54,8 +54,8 @@ internal object FileSignatureDetector {
                 listOf("isom", "iso2", "iso3", "iso4", "iso5", "iso6", "mp41", "mp42", "avc1", "M4V ", "m4v ", "dash", "ndas", "mp71", "MSNV", "mmp4", "f4v ", "f4p ").any { header.asciiAt(8, it) } -> video("video/mp4")
                 else -> null
             }
-            header.asciiAt(0, "ID3") || header.hasMpegAudioFrame() -> Signature(RecoveryFileType.Audio, "audio/mpeg")
             (header.size > 1 && (header[0].toInt() and 0xFF) == 0xFF && (header[1].toInt() and 0xF6) == 0xF0) -> Signature(RecoveryFileType.Audio, "audio/aac")
+            header.asciiAt(0, "ID3") || header.hasMpegAudioFrame() -> Signature(RecoveryFileType.Audio, "audio/mpeg")
             else -> null
         }
     }

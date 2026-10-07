@@ -26,7 +26,8 @@ data class MediaScanPolicy(val category: RecoveryCategory? = null) {
 
     fun shouldReadHeader(name: String, mime: String?): Boolean = shouldReadHeader(name) &&
         mime?.substringBefore(';')?.trim()?.lowercase(Locale.ROOT).orEmpty() in
-        setOf("", "application/octet-stream", "application/unknown", "chemical/x-cache", "application/x-cache")
+        (setOf("", "application/octet-stream", "application/unknown", "chemical/x-cache", "application/x-cache") +
+            if (RecoveryFileType.Audio in types) setOf("application/ogg") else emptySet())
 
     companion object {
         val imageExtensions = setOf("jpg", "jpeg", "png", "webp", "gif", "bmp", "heic", "heif", "avif", "dng", "tif", "tiff", "svg", "ico", "raw")

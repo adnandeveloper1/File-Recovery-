@@ -4,6 +4,7 @@ import android.content.ContentResolver
 import android.content.ContentUris
 import android.content.Context
 import android.database.Cursor
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -114,7 +115,7 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
 
         suspend fun record(file: RecoverableFile) {
             inspected++
-            if (file.sizeBytes <= 0 || file.fileType !in policy.types) {
+            if (file.sizeBytes < 0 || (file.sizeBytes == 0L && file.fileType != RecoveryFileType.Audio) || file.fileType !in policy.types) {
                 if (inspected % 500 == 0) coroutineContext.ensureActive()
                 return
             }
@@ -211,11 +212,16 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
                 coroutineContext.ensureActive()
                 val name = cursor.getString(nameIndex) ?: continue
                 val mime = cursor.getString(mimeIndex)
-                if (!policy.accepts(name, mime)) continue
+                val fileUri = ContentUris.withAppendedId(uri, cursor.getLong(idIndex))
+                val resolvedMime = if (policy.accepts(name, mime)) mime else {
+                    if (type != RecoveryFileType.Audio) continue
+                    val identified = identifyMedia(fileUri, name, mime, policy)
+                    if (identified?.first != RecoveryFileType.Audio) continue
+                    identified.second
+                }
                 val path = if (pathIndex >= 0) cursor.getString(pathIndex).orEmpty() else ""
                 val trashed = trashIndex >= 0 && cursor.getInt(trashIndex) == 1
-                val fileUri = ContentUris.withAppendedId(uri, cursor.getLong(idIndex))
-                record(mediaFile(fileUri, name, mime, cursor.getLong(sizeIndex), cursor.getLong(dateIndex) * 1000L,
+                record(mediaFile(fileUri, name, resolvedMime, cursor.getLong(sizeIndex), cursor.getLong(dateIndex) * 1000L,
                     if (Build.VERSION.SDK_INT < 29) path.substringBeforeLast('/', "") else path,
                     type, volume, trashed, duration = if (durationIndex >= 0) cursor.getLong(durationIndex) else null,
                     identity = when {
@@ -249,15 +255,15 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
                             if (name !in setOf(".git", "node_modules", "Android")) queue.add(id to depth + 1)
                         } else {
                             val uri = DocumentsContract.buildDocumentUriUsingTree(tree, id)
-                            val known = MediaScanPolicy.classify(name, mime)
-                            // DocumentsProvider maps .cache to chemical/x-cache based on the suffix.
-                            // Confirm ambiguous cache content using its bytes instead of rejecting it.
-                            val inferred = if (known == null && policy.shouldReadHeader(name, mime)) {
-                                try { resolver.openInputStream(uri)?.use { FileSignatureDetector.inspect(it) } }
-                                catch (_: java.io.IOException) { null } catch (_: SecurityException) { null }
-                            } else null
-                            val type = known ?: inferred?.type
-                            if (type != null && type in policy.types) record(mediaFile(uri, name, inferred?.mimeType ?: mime, c.getLong(3), c.getLong(4), parent,
+                            val (type, resolvedMime) = identifyMedia(uri, name, mime, policy) ?: continue
+                            if (type !in policy.types) continue
+                            val size = if (type == RecoveryFileType.Audio) {
+                                AudioScanSupport.readableSize(if (c.isNull(3)) null else c.getLong(3)) {
+                                    try { resolver.openInputStream(uri)?.use { it.read() >= 0 } == true }
+                                    catch (_: java.io.IOException) { false } catch (_: SecurityException) { false }
+                                } ?: continue
+                            } else c.getLong(3)
+                            record(mediaFile(uri, name, resolvedMime, size, c.getLong(4), parent,
                                 type, "folder", false, fromFolder = true,
                                 identity = MediaFileIdentity.document(tree.authority, id, Environment.getExternalStorageDirectory().path)))
                         }
@@ -302,16 +308,42 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
                         return@forEach
                     }
                     if (!file.isFile || file.length() <= 0L || file.name == ".nomedia") return@forEach
-                    val known = MediaScanPolicy.classify(file.name, null)
-                    val inferred = if (known == null && policy.shouldReadHeader(file.name)) FileSignatureDetector.inspect(file) else null
-                    val type = known ?: inferred?.type
-                    if (type !in policy.types || type == null) return@forEach
-                    record(mediaFile(Uri.fromFile(file), file.name, inferred?.mimeType, file.length(), file.lastModified(),
+                    val uri = Uri.fromFile(file)
+                    val (type, resolvedMime) = identifyMedia(uri, file.name, null, policy) ?: return@forEach
+                    if (type !in policy.types) return@forEach
+                    record(mediaFile(uri, file.name, resolvedMime, file.length(), file.lastModified(),
                         file.parentFile!!.relativeTo(root).path, type, if (root == storageRoot) "external_primary" else root.name, false))
                 }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (error: Exception) { onReadError(error) }
         }
+    }
+
+    private fun identifyMedia(uri: Uri, name: String, mime: String?, policy: MediaScanPolicy): Pair<RecoveryFileType, String?>? {
+        val known = MediaScanPolicy.classify(name, mime)
+        val inferred = if (known == null && policy.shouldReadHeader(name, mime)) {
+            try { resolver.openInputStream(uri)?.use { FileSignatureDetector.inspect(it) } }
+            catch (_: java.io.IOException) { null } catch (_: SecurityException) { null }
+        } else null
+        val type = known ?: inferred?.type
+        val resolvedMime = inferred?.mimeType ?: mime
+        val oggContainer = mime?.substringBefore(';')?.trim()?.equals("application/ogg", ignoreCase = true) == true
+        if (RecoveryFileType.Audio !in policy.types || (type != RecoveryFileType.Video && !oggContainer)) {
+            return type?.let { it to resolvedMime }
+        }
+        // Container headers alone cannot tell audio-only recordings from videos.
+        val retriever = MediaMetadataRetriever()
+        val metadata = try {
+            retriever.setDataSource(context, uri)
+            AudioScanSupport.ContainerMetadata(
+                retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_AUDIO) == "yes",
+                retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_VIDEO) == "yes",
+                retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_MIMETYPE),
+            )
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { null }
+        finally { retriever.release() }
+        return AudioScanSupport.resolveContainer(type, resolvedMime, metadata)
     }
 
     private suspend fun query(uri: Uri, projection: Array<String>, args: Bundle): Cursor? = suspendCancellableCoroutine { continuation ->

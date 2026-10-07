@@ -75,4 +75,22 @@ class MediaScanPolicyTest {
         }
         assertEquals("image/avif", FileSignatureDetector.inspect(ByteArrayInputStream(header))?.mimeType)
     }
+
+    @Test fun aacAdtsHeadersAreNotMistakenForMp3() {
+        listOf(0xF0, 0xF1, 0xF8, 0xF9).forEach { second ->
+            val header = byteArrayOf(0xFF.toByte(), second.toByte(), 0x50, 0x80.toByte(), 0x01, 0x7F, 0xFC.toByte())
+            assertEquals("audio/aac", FileSignatureDetector.inspect(ByteArrayInputStream(header))?.mimeType)
+        }
+        assertEquals("audio/mpeg", FileSignatureDetector.inspect(ByteArrayInputStream(
+            byteArrayOf(0xFF.toByte(), 0xFB.toByte(), 0x90.toByte(), 0x64)))?.mimeType)
+    }
+
+    @Test fun applicationOggIsInspectedForAudioWithoutTrustingItsFilename() {
+        val audio = MediaScanPolicy(RecoveryCategory.Audio)
+        assertTrue(audio.shouldReadHeader("recording.ogg", "APPLICATION/OGG; codecs=opus"))
+        assertFalse(audio.accepts("recording.ogg", "application/ogg"))
+        assertFalse(audio.shouldReadHeader("document.ogg", "application/pdf"))
+        assertFalse(MediaScanPolicy(RecoveryCategory.Photos).shouldReadHeader("recording.ogg", "application/ogg"))
+        assertEquals("audio/ogg", FileSignatureDetector.inspect(ByteArrayInputStream("OggS".toByteArray()))?.mimeType)
+    }
 }

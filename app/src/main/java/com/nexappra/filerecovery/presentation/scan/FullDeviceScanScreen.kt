@@ -245,12 +245,12 @@ internal fun DeepScanCategoryPicker(selected: RecoveryCategory?, onSelect: (Reco
     }
 }
 
-internal fun mediaPermissions(category: RecoveryCategory?): Array<String> = when {
-    Build.VERSION.SDK_INT >= 33 -> buildList {
+internal fun mediaPermissions(category: RecoveryCategory?, sdkInt: Int = Build.VERSION.SDK_INT): Array<String> = when {
+    sdkInt >= 33 -> buildList {
         if (category == null || category == RecoveryCategory.Audio) add(Manifest.permission.READ_MEDIA_AUDIO)
-        if (category == null || category != RecoveryCategory.Videos) add(Manifest.permission.READ_MEDIA_IMAGES)
-        if (category == null || category != RecoveryCategory.Photos) add(Manifest.permission.READ_MEDIA_VIDEO)
-        if (Build.VERSION.SDK_INT >= 34) add(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)
+        if (category == null || category == RecoveryCategory.Photos) add(Manifest.permission.READ_MEDIA_IMAGES)
+        if (category == null || category == RecoveryCategory.Videos) add(Manifest.permission.READ_MEDIA_VIDEO)
+        if (sdkInt >= 34 && category != RecoveryCategory.Audio) add(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)
     }.toTypedArray()
     else -> arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
 }
