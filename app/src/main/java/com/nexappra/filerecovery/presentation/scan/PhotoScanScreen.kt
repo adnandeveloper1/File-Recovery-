@@ -407,6 +407,11 @@ private fun ScanProgressHero(
     progress: Float,
     progressValue: Float?,
 ) {
+    val animatedProgressValue by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = progressValue ?: 0f,
+        animationSpec = androidx.compose.animation.core.tween(durationMillis = 350, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+        label = "PhotoScanProgress"
+    )
     val trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
 
     Column(
@@ -425,7 +430,7 @@ private fun ScanProgressHero(
                 )
             }
             CircularProgressIndicator(
-                progress = { progressValue ?: 0f },
+                progress = { animatedProgressValue },
                 modifier = Modifier.size(140.dp),
                 strokeWidth = 12.dp,
                 color = MaterialTheme.colorScheme.primary,
@@ -437,7 +442,7 @@ private fun ScanProgressHero(
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 Text(
-                    text = if (progressValue == null) "--" else "${(progress * 100).toInt()}%",
+                    text = if (progressValue == null) "--" else "${(animatedProgressValue * 100).toInt()}%",
                     style = MaterialTheme.typography.headlineSmall,
                     color = MaterialTheme.colorScheme.onSurface,
                 )

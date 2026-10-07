@@ -146,11 +146,69 @@ fun FullDeviceScanRoute(onBack: () -> Unit, onNavigateToResults: (String) -> Uni
             } }
         } else {
             item { FlowPanel(Modifier.fillMaxWidth()) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                    CircularProgressIndicator(Modifier.size(46.dp), strokeWidth = 3.dp)
-                    Column {
-                        Text(if (state.isStopping) "Keeping your results…" else "Finding your media", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                        Text("${state.totalFilesFound} found so far", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+                val computedProgress = state.progress ?: run {
+                    if (state.locations.isNotEmpty()) {
+                        val completed = state.locations.count { it.status == ScanLocationStatus.Completed }
+                        (completed.toFloat() / state.locations.size).coerceIn(0.05f, 0.98f)
+                    } else 0.15f
+                }
+                val animatedProgress by androidx.compose.animation.core.animateFloatAsState(
+                    targetValue = if (state.isStopping) 1f else computedProgress,
+                    animationSpec = androidx.compose.animation.core.tween(durationMillis = 400, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                    label = "ScanProgress"
+                )
+                val percent = (animatedProgress * 100).toInt().coerceIn(1, 100)
+
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier.size(136.dp)
+                    ) {
+                        CircularProgressIndicator(
+                            progress = { animatedProgress },
+                            modifier = Modifier.size(136.dp),
+                            strokeWidth = 9.dp,
+                            color = MaterialTheme.colorScheme.primary,
+                            trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                            strokeCap = androidx.compose.ui.graphics.StrokeCap.Round
+                        )
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Text(
+                                text = "$percent%",
+                                style = MaterialTheme.typography.headlineLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = if (state.isStopping) "Stopping…" else "Scanning…",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = if (state.isStopping) "Keeping your results…" else "Finding your media",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "${state.totalFilesFound} found so far",
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.SemiBold,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
                     }
                 }
                 Text(stageLabel(state.currentLocation?.type), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
