@@ -25,7 +25,7 @@ class HomeFlowTest {
     }
     @Test fun deepScanOffersAllThreeSelectableCategories() {
         compose.setContent {
-            var selected by remember { mutableStateOf(RecoveryCategory.Photos) }
+            var selected by remember { mutableStateOf<RecoveryCategory?>(RecoveryCategory.Photos) }
             FileRecoveryTheme(false) { DeepScanCategoryPicker(selected) { selected = it } }
         }
         compose.onNodeWithText("Photos").assertIsSelected()

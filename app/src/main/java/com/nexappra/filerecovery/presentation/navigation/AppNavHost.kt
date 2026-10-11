@@ -69,7 +69,8 @@ fun AppNavHost(modifier: Modifier = Modifier) {
             composable(AppDestination.FullRecoveryResults.route, arguments = listOf(
                 navArgument(AppDestination.FullRecoveryResults.ArgSessionId) { type = NavType.StringType },
             )) {
-                FullRecoveryResultsRoute(onBack = back, onOpenPremium = premium, onDeepScan = deep)
+                FullRecoveryResultsRoute(onBack = back, onOpenPremium = premium, onDeepScan = deep,
+                    onQuickScan = { category -> nav.navigate(AppDestination.FullDeviceScan.createRoute(category)) })
             }
         }
     }

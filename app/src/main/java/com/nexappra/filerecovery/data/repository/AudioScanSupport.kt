@@ -6,6 +6,12 @@ import java.util.Locale
 internal object AudioScanSupport {
     data class ContainerMetadata(val hasAudio: Boolean, val hasVideo: Boolean, val mimeType: String?)
 
+    // These signatures describe audio-specific formats; Ogg/MP4 can also contain video.
+    fun isAudioOnlySignature(mime: String): Boolean = mime in setOf("audio/mpeg", "audio/aac", "audio/wav", "audio/flac", "audio/amr", "audio/midi", "audio/aiff")
+
+    fun verifiedAudioMime(mime: String?, metadata: ContainerMetadata): String? =
+        if (metadata.hasAudio && !metadata.hasVideo) resolveContainer(RecoveryFileType.Audio, mime, metadata)?.second else null
+
     fun resolveContainer(type: RecoveryFileType?, mime: String?, metadata: ContainerMetadata?): Pair<RecoveryFileType, String?>? {
         if (metadata == null) return type?.let { it to mime }
         if (metadata.hasVideo) return RecoveryFileType.Video to (metadata.mimeType ?: mime)

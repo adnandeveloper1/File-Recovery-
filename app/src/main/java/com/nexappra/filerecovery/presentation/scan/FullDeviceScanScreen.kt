@@ -52,7 +52,8 @@ fun FullDeviceScanRoute(onBack: () -> Unit, onNavigateToResults: (String) -> Uni
         if (uri != null) {
             try {
                 context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                folderMessage = "Folder access granted. Tap Start deep scan to search your selected category."
+                folderMessage = if (state.mode == RecoveryScanMode.Deep) "Folder access granted. Tap Start deep scan to search your selected category."
+                    else "Folder access granted. Quick Scan can now search hidden media in this folder."
             } catch (_: SecurityException) { folderMessage = "This folder does not provide persistent access. Please choose another folder." }
             viewModel.onAccessStateChanged(context.mediaAccess())
         } else {
@@ -76,8 +77,14 @@ fun FullDeviceScanRoute(onBack: () -> Unit, onNavigateToResults: (String) -> Uni
         } }
     }
     BackHandler { viewModel.stopScan() }
-    val title = when (state.selectedCategory) { RecoveryCategory.Photos -> "Photo scan"; RecoveryCategory.Videos -> "Video scan"; RecoveryCategory.Audio -> "Audio scan"; else -> "Photos & videos" }
+    val title = when (state.selectedCategory) { RecoveryCategory.Photos -> "Photo scan"; RecoveryCategory.Videos -> "Video scan"; RecoveryCategory.Audio -> "Audio scan"; else -> "Media scan" }
     val hasCategoryMediaAccess = state.permissions.canReadMedia(state.selectedCategory)
+    val mediaLabel = when (state.selectedCategory) {
+        RecoveryCategory.Photos -> "photos"
+        RecoveryCategory.Videos -> "videos"
+        RecoveryCategory.Audio -> "audio"
+        else -> "photos, videos and audio"
+    }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(22.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
         item { FlowHeader(title, if (state.mode == RecoveryScanMode.Deep) "DEEP SEARCH" else "QUICK SCAN", onBack = viewModel::stopScan) }
         if (state.mode == RecoveryScanMode.Deep && !state.isPremium) {
@@ -89,9 +96,11 @@ fun FullDeviceScanRoute(onBack: () -> Unit, onNavigateToResults: (String) -> Uni
             item { FlowPanel(Modifier.fillMaxWidth()) {
                 if (state.mode == RecoveryScanMode.Deep) {
                     DeepScanCategoryPicker(state.selectedCategory, viewModel::selectDeepCategory)
-                    FeatureLine(Icons.Rounded.FolderOpen, "Choose your deep scan access", "Search permitted media and chosen folders for ${state.selectedCategory?.name?.lowercase() ?: "all photos, videos and audio"}. Choose a folder to include readable hidden and cached copies.")
+                    FeatureLine(Icons.Rounded.FolderOpen, "Choose your deep scan access",
+                        "Search hidden $mediaLabel, .nomedia locations and accessible recycle-bin copies. Choose a folder or allow All Files access to search further.")
                 } else {
-                    FeatureLine(Icons.Rounded.FolderOpen, "Choose your scan access", "Allow access to the selected media category. Android may limit the results you can scan.")
+                    FeatureLine(Icons.Rounded.FolderOpen, "Choose your scan access",
+                        "Search hidden $mediaLabel and accessible recycle-bin copies. Choose a folder or allow All Files access to include hidden locations.")
                 }
                 if (!hasCategoryMediaAccess) {
                     Button(onClick = { permissions.launch(mediaPermissions(state.selectedCategory)) }, modifier = Modifier.fillMaxWidth()) {
@@ -113,7 +122,7 @@ fun FullDeviceScanRoute(onBack: () -> Unit, onNavigateToResults: (String) -> Uni
                         catch (_: ActivityNotFoundException) { folderMessage = "Open Android Settings > Apps > File Recovery > Permissions to allow access." }
                     }, modifier = Modifier.fillMaxWidth()) { Text("Open app settings") }
                 }
-                if (state.mode == RecoveryScanMode.Deep) {
+                run {
                     if (Build.VERSION.SDK_INT >= 30 && !state.permissions.allFilesAccess) {
                         OutlinedButton(onClick = {
                             try {
@@ -130,8 +139,9 @@ fun FullDeviceScanRoute(onBack: () -> Unit, onNavigateToResults: (String) -> Uni
                     OutlinedButton(onClick = chooseFolder, modifier = Modifier.fillMaxWidth()) { Text("Choose a folder") }
                     Text("${state.permissions.safFolderCount} chosen folder(s)", style = MaterialTheme.typography.bodySmall)
                     if (state.hasAuthorizedFolders && !hasCategoryMediaAccess) Text("Folder access is ready. Media permission is optional for scanning your chosen folders.", style = MaterialTheme.typography.bodySmall)
-                    Text("Deep scan searches files that still exist in accessible folders. Android does not allow raw-sector recovery or access to other apps' private caches.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Button(onClick = viewModel::startScan, modifier = Modifier.fillMaxWidth(), enabled = state.canStartFullDeviceScan) { Text("Start deep scan") }
+                    Text("Recovery searches hidden and recycle-bin copies that still exist. Permanently erased originals cannot be reconstructed.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (state.mode == RecoveryScanMode.Deep) Button(onClick = viewModel::startScan, modifier = Modifier.fillMaxWidth(), enabled = state.canStartFullDeviceScan) { Text("Start deep scan") }
                 }
                 if (folderMessage != null) Text(folderMessage!!, style = MaterialTheme.typography.bodySmall)
             } }
@@ -139,7 +149,7 @@ fun FullDeviceScanRoute(onBack: () -> Unit, onNavigateToResults: (String) -> Uni
             item { FlowPanel(Modifier.fillMaxWidth()) {
                 FeatureLine(Icons.Rounded.Info, "Let's try again", state.errorMessage ?: "This storage could not be read.")
                 Button(onClick = viewModel::retryScan) { Text("Retry scan") }
-                if (state.mode == RecoveryScanMode.Deep) {
+                run {
                     OutlinedButton(onClick = chooseFolder) { Text("Choose a folder") }
                     if (folderMessage != null) Text(folderMessage!!, style = MaterialTheme.typography.bodySmall)
                 }
@@ -264,14 +274,20 @@ private fun Context.mediaAccess(): DeviceScanAccessState {
         audioAccess = Build.VERSION.SDK_INT >= 33 && granted(Manifest.permission.READ_MEDIA_AUDIO),
         legacyReadAccess = Build.VERSION.SDK_INT < 33 && granted(Manifest.permission.READ_EXTERNAL_STORAGE),
         allFilesAccess = Build.VERSION.SDK_INT >= 30 && Environment.isExternalStorageManager(),
+        sharedStorageTraversalAccess = when {
+            Build.VERSION.SDK_INT >= 30 -> Environment.isExternalStorageManager()
+            Build.VERSION.SDK_INT >= 29 -> Environment.isExternalStorageLegacy() && granted(Manifest.permission.READ_EXTERNAL_STORAGE)
+            else -> granted(Manifest.permission.READ_EXTERNAL_STORAGE)
+        },
         safFolderCount = contentResolver.persistedUriPermissions.count { it.isReadPermission && DocumentsContract.isTreeUri(it.uri) },
     ))
 }
 
 private fun stageLabel(stage: RecoveryScanLocationType?) = when (stage) {
-    RecoveryScanLocationType.MediaStoreImages -> "Checking the photo index…"
-    RecoveryScanLocationType.MediaStoreVideos -> "Checking the video index…"
-    RecoveryScanLocationType.MediaStoreAudio -> "Checking the audio index…"
+    RecoveryScanLocationType.MediaStoreImages -> "Checking hidden photo entries…"
+    RecoveryScanLocationType.MediaStoreTrash -> "Checking recycle-bin copies…"
+    RecoveryScanLocationType.MediaStoreVideos -> "Checking hidden video entries…"
+    RecoveryScanLocationType.MediaStoreAudio -> "Checking hidden audio entries…"
     RecoveryScanLocationType.AuthorizedFolders -> "Looking in your chosen folders…"
     RecoveryScanLocationType.AccessibleStorage -> "Looking for hidden and cached media…"
     else -> "Preparing your scan…"

@@ -24,7 +24,8 @@ class RecoveryViewModelTest {
         var scans = 0; var copies = 0
         var category: RecoveryCategory? = null
         var fail = false
-        val photo = RecoverableFile("photo", "content://test/photo", "photo.jpg", "image/jpeg", 24, 0, null, RecoveryFileType.Photo, emptySet(), false, null, false, null)
+        val photo = RecoverableFile("photo", "content://test/photo", "photo.jpg", "image/jpeg", 24, 0, "Pictures/.hidden", RecoveryFileType.Photo,
+            setOf(RecoveryFileSource.Hidden), true, RecoveryFileHiddenReason.HiddenDirectory, false, null)
         var session = RecoveryScanSession("session", RecoveryScanMode.Quick, durationMillis = 10, totalBytesScanned = 24, files = listOf(photo), locations = emptyList(), completedAtMillis = 0)
         override suspend fun performFullDeviceScan(selectedCategory: RecoveryCategory?, mode: RecoveryScanMode, onSnapshot: suspend (RecoveryScanSnapshot) -> Unit): RecoveryScanSession {
             scans++; category = selectedCategory; return session
@@ -123,15 +124,83 @@ class RecoveryViewModelTest {
         assertEquals(RecoveryCategory.Audio, repo.category)
     }
 
-    @Test fun folderAccessDoesNotAuthorizeQuickMediaScan() = runTest(dispatcher) {
-        listOf(RecoveryCategory.Photos, RecoveryCategory.Videos, RecoveryCategory.Audio).forEach { category ->
-            val repo = Repository()
-            val vm = FullDeviceScanViewModel(repo, Premium(false), SavedStateHandle(mapOf(AppDestination.FullDeviceScan.ArgCategory to category.name)))
-            vm.onAccessStateChanged(DeviceScanAccessState(DeviceScanPermissions(safFolderCount = 1)))
-            runCurrent()
-            assertFalse(vm.uiState.value.canStartFullDeviceScan)
-            assertEquals(0, repo.scans)
-        }
+    @Test fun quickAudioScanStartsOnceWithOnlyFolderAccess() = runTest(dispatcher) {
+        val repo = Repository()
+        val vm = FullDeviceScanViewModel(repo, Premium(false), SavedStateHandle(mapOf(AppDestination.FullDeviceScan.ArgCategory to "Audio")))
+        val access = DeviceScanAccessState(DeviceScanPermissions(safFolderCount = 1))
+        vm.onAccessStateChanged(access); runCurrent()
+        vm.onAccessStateChanged(access); runCurrent()
+        assertTrue(vm.uiState.value.canStartFullDeviceScan)
+        assertEquals(1, repo.scans)
+        assertEquals(RecoveryCategory.Audio, repo.category)
+    }
+
+    @Test fun quickVideoScanStartsOnceWithOnlyFolderAccess() = runTest(dispatcher) {
+        val repo = Repository()
+        val vm = FullDeviceScanViewModel(repo, Premium(false), SavedStateHandle(mapOf(AppDestination.FullDeviceScan.ArgCategory to "Videos")))
+        val access = DeviceScanAccessState(DeviceScanPermissions(safFolderCount = 1))
+        vm.onAccessStateChanged(access); runCurrent()
+        vm.onAccessStateChanged(access); runCurrent()
+        assertTrue(vm.uiState.value.canStartFullDeviceScan)
+        assertEquals(1, repo.scans)
+        assertEquals(RecoveryCategory.Videos, repo.category)
+    }
+
+    @Test fun quickPhotoScanStartsOnceWithOnlyFolderAccess() = runTest(dispatcher) {
+        val repo = Repository()
+        val vm = FullDeviceScanViewModel(repo, Premium(false), SavedStateHandle(mapOf(AppDestination.FullDeviceScan.ArgCategory to "Photos")))
+        val access = DeviceScanAccessState(DeviceScanPermissions(safFolderCount = 1))
+        vm.onAccessStateChanged(access); runCurrent()
+        vm.onAccessStateChanged(access); runCurrent()
+        assertTrue(vm.uiState.value.canStartFullDeviceScan)
+        assertEquals(1, repo.scans)
+        assertEquals(RecoveryCategory.Photos, repo.category)
+        assertTrue(DeviceScanPermissions(safFolderCount = 1).canScan(null, RecoveryScanMode.Quick))
+    }
+
+    @Test fun olderResultsExcludeGalleryPhotosWithoutRetargetingSavedSelections() = runTest(dispatcher) {
+        val repo = Repository()
+        val gallery = repo.photo.copy(id = "gallery", relativePath = "DCIM/Camera", sources = emptySet(), isHidden = false, hiddenReason = null, dateModifiedMillis = 1)
+        val video = gallery.copy(id = "video", fileType = RecoveryFileType.Video)
+        val audio = gallery.copy(id = "audio", fileType = RecoveryFileType.Audio)
+        repo.session = repo.session.copy(files = listOf(gallery, repo.photo, video, audio))
+        val state = SavedStateHandle(mapOf(AppDestination.FullRecoveryResults.ArgSessionId to "session", "selected_indices" to intArrayOf(0)))
+        val vm = FullRecoveryResultsViewModel(state, repo, Premium(true))
+        runCurrent()
+        assertEquals(setOf("photo"), vm.uiState.value.allFiles.map { it.id }.toSet())
+        assertTrue(vm.uiState.value.selectedIds.isEmpty())
+        vm.onToggleSelection("photo")
+        val restored = FullRecoveryResultsViewModel(state, repo, Premium(true))
+        runCurrent()
+        assertEquals(setOf("photo"), restored.uiState.value.selectedIds)
+    }
+
+    @Test fun photoPolicySessionsDropGalleryVideosWithoutRetargetingPositions() = runTest(dispatcher) {
+        val repo = Repository()
+        val hidden = repo.photo.copy(id = "hidden_video", fileType = RecoveryFileType.Video, displayName = "clip.mp4", mimeType = "video/mp4", dateModifiedMillis = 1)
+        val gallery = hidden.copy(id = "gallery_video", relativePath = "Movies", sources = emptySet(), isHidden = false, hiddenReason = null, dateModifiedMillis = 2)
+        repo.session = repo.session.copy(selectedCategory = RecoveryCategory.Videos, files = listOf(gallery, hidden))
+        val state = SavedStateHandle(mapOf(AppDestination.FullRecoveryResults.ArgSessionId to "session",
+            "photo_result_policy" to 1, "selected_indices" to intArrayOf(0)))
+        val vm = FullRecoveryResultsViewModel(state, repo, Premium(true))
+        runCurrent()
+        assertEquals(listOf("hidden_video"), vm.uiState.value.allFiles.map { it.id })
+        assertTrue(vm.uiState.value.selectedIds.isEmpty())
+        vm.onToggleSelection("hidden_video")
+        val restored = FullRecoveryResultsViewModel(state, repo, Premium(true))
+        runCurrent()
+        assertEquals(setOf("hidden_video"), restored.uiState.value.selectedIds)
+    }
+
+    @Test fun photoPolicySelectionsRemainWhenNoVideoWasRemoved() = runTest(dispatcher) {
+        val repo = Repository()
+        val gallery = repo.photo.copy(id = "gallery_photo", relativePath = "DCIM/Camera", sources = emptySet(), isHidden = false, hiddenReason = null)
+        repo.session = repo.session.copy(files = listOf(gallery, repo.photo))
+        val state = SavedStateHandle(mapOf(AppDestination.FullRecoveryResults.ArgSessionId to "session",
+            "photo_result_policy" to 1, "selected_indices" to intArrayOf(0)))
+        val vm = FullRecoveryResultsViewModel(state, repo, Premium(true))
+        runCurrent()
+        assertEquals(setOf("photo"), vm.uiState.value.selectedIds)
     }
 
     @Test fun selectedVideoAccessStartsVideoScanAndNeverAudioScan() = runTest(dispatcher) {
@@ -142,6 +211,49 @@ class RecoveryViewModelTest {
         assertEquals(1, repo.scans)
         assertEquals(RecoveryCategory.Videos, repo.category)
         assertFalse(DeviceScanPermissions(partialVisualAccess = true).canReadMedia(RecoveryCategory.Audio))
+    }
+
+    @Test fun existingAllFilesAccessAuthorizesBothAudioScanModesWithoutMediaPermissions() = runTest(dispatcher) {
+        listOf(RecoveryScanMode.Quick, RecoveryScanMode.Deep).forEach { mode ->
+            val repo = Repository()
+            val vm = FullDeviceScanViewModel(repo, Premium(true), SavedStateHandle(mapOf(
+                AppDestination.FullDeviceScan.ArgCategory to "Audio", AppDestination.FullDeviceScan.ArgMode to mode.name)))
+            vm.onAccessStateChanged(DeviceScanAccessState(DeviceScanPermissions(allFilesAccess = true, sharedStorageTraversalAccess = true)))
+            runCurrent()
+            if (mode == RecoveryScanMode.Deep) { vm.startScan(); runCurrent() }
+            assertEquals(1, repo.scans)
+            assertEquals(RecoveryCategory.Audio, repo.category)
+        }
+    }
+
+    @Test fun visualPolicySessionsDropOrdinaryAudioWithoutRetargetingSelections() = runTest(dispatcher) {
+        val repo = Repository()
+        val hidden = repo.photo.copy(id = "hidden_audio", fileType = RecoveryFileType.Audio,
+            displayName = "recording.m4a", mimeType = "audio/mp4", dateModifiedMillis = 1)
+        val library = hidden.copy(id = "library_audio", relativePath = "Music", sources = emptySet(),
+            isHidden = false, hiddenReason = null, dateModifiedMillis = 2)
+        repo.session = repo.session.copy(selectedCategory = RecoveryCategory.Audio, files = listOf(library, hidden))
+        val state = SavedStateHandle(mapOf(AppDestination.FullRecoveryResults.ArgSessionId to "session",
+            "visual_result_policy" to 1, "selected_indices" to intArrayOf(0)))
+        val vm = FullRecoveryResultsViewModel(state, repo, Premium(true))
+        runCurrent()
+        assertEquals(listOf("hidden_audio"), vm.uiState.value.allFiles.map { it.id })
+        assertTrue(vm.uiState.value.selectedIds.isEmpty())
+        vm.onToggleSelection("hidden_audio")
+        val restored = FullRecoveryResultsViewModel(state, repo, Premium(true))
+        runCurrent()
+        assertEquals(setOf("hidden_audio"), restored.uiState.value.selectedIds)
+    }
+
+    @Test fun visualPolicySelectionsRemainWhenNoAudioWasRemoved() = runTest(dispatcher) {
+        val repo = Repository()
+        val gallery = repo.photo.copy(id = "gallery_photo", relativePath = "DCIM/Camera", sources = emptySet(), isHidden = false, hiddenReason = null)
+        repo.session = repo.session.copy(files = listOf(gallery, repo.photo))
+        val state = SavedStateHandle(mapOf(AppDestination.FullRecoveryResults.ArgSessionId to "session",
+            "visual_result_policy" to 1, "selected_indices" to intArrayOf(0)))
+        val vm = FullRecoveryResultsViewModel(state, repo, Premium(true))
+        runCurrent()
+        assertEquals(setOf("photo"), vm.uiState.value.selectedIds)
     }
 
     @Test fun audioScanNeedsAudioAccessAndKeepsItsCategory() = runTest(dispatcher) {

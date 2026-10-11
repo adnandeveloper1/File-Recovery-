@@ -36,6 +36,8 @@ internal object FileSignatureDetector {
             header.asciiAt(0, "RIFF") && header.asciiAt(8, "WAVE") -> audio("audio/wav")
             header.asciiAt(0, "RIFF") && header.asciiAt(8, "AVI ") -> video("video/x-msvideo")
             header.asciiAt(0, "fLaC") -> audio("audio/flac")
+            header.asciiAt(0, "MThd") && count >= 14 -> audio("audio/midi")
+            header.asciiAt(0, "FORM") && (header.asciiAt(8, "AIFF") || header.asciiAt(8, "AIFC")) -> audio("audio/aiff")
             header.asciiAt(0, "OggS") -> audio("audio/ogg")
             header.asciiAt(0, "#!AMR") -> audio("audio/amr")
             header.startsWith(0x1A, 0x45, 0xDF, 0xA3) -> video("video/webm")

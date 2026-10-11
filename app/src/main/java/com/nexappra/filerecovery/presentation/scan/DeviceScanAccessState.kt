@@ -28,7 +28,7 @@ data class DeviceScanPermissions(
     }
 
     fun canScan(category: RecoveryCategory?, mode: RecoveryScanMode): Boolean =
-        canReadMedia(category) || (mode == RecoveryScanMode.Deep && safFolderCount > 0)
+        canReadMedia(category) || safFolderCount > 0
 
     val hasFullVisualAccess: Boolean
         get() = legacyReadAccess || allFilesAccess || (fullImagesAccess && fullVideosAccess)

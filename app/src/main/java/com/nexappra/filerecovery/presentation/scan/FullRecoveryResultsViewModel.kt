@@ -70,11 +70,24 @@ class FullRecoveryResultsViewModel @Inject constructor(
         // Positions refer to the immutable, persisted session in the same stable order.
         savedStateHandle["selected_indices"] = uiState.value.allFiles.withIndex()
             .filter { it.value.id in ids }.map { it.index }.toIntArray()
+        savedStateHandle["media_result_policy"] = 1
         savedStateHandle.remove<ArrayList<String>>("selected_ids")
         mutableState.update { it.copy(selectedIds = ids, selectedTotalSizeBytes = it.allFiles.filter { f -> f.id in ids }.sumOf { f -> f.sizeBytes }) }
     }
-    private fun orderedFiles(session: RecoveryScanSession) = session.files
-        .filter { it.fileType in setOf(RecoveryFileType.Photo, RecoveryFileType.Video, RecoveryFileType.Audio) }.sortedByDescending { it.dateModifiedMillis }
+    private fun orderedFiles(session: RecoveryScanSession): List<RecoverableFile> {
+        val media = session.files.filter { it.fileType in setOf(RecoveryFileType.Photo, RecoveryFileType.Video, RecoveryFileType.Audio) }
+        val eligible = media.filter(MediaRecoveryPolicy::accepts)
+        // Removing gallery entries from an older session must not retarget its saved positions.
+        if (savedStateHandle.get<Int>("media_result_policy") != 1) {
+            val previousFiles = when {
+                savedStateHandle.get<Int>("visual_result_policy") == 1 -> media.filter(VisualRecoveryPolicy::accepts)
+                savedStateHandle.get<Int>("photo_result_policy") == 1 -> media.filter(PhotoRecoveryPolicy::accepts)
+                else -> media
+            }
+            if (eligible.size != previousFiles.size) savedStateHandle.remove<IntArray>("selected_indices")
+        }
+        return eligible.sortedByDescending { it.dateModifiedMillis }
+    }
 
     private fun restoredSelection(files: List<RecoverableFile>): Set<String> {
         val indices = savedStateHandle.get<IntArray>("selected_indices")

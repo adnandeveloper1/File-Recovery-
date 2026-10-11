@@ -192,7 +192,13 @@ class MediaRecoveryWriter @Inject constructor(
         }) { "Choose a new destination to preserve the source file." }
     }
     private fun recoveryName(file: RecoverableFile): String {
-        val safe = MediaScanPolicy.safeFileName(file.displayName)
+        val sanitized = MediaScanPolicy.safeFileName(file.displayName)
+        val safe = when (file.fileType) {
+            RecoveryFileType.Photo -> PhotoRecoveryPolicy.recoveryName(sanitized)
+            RecoveryFileType.Video -> VisualRecoveryPolicy.recoveryName(sanitized, "recovered_video")
+            RecoveryFileType.Audio -> VisualRecoveryPolicy.recoveryName(sanitized, "recovered_audio")
+            else -> sanitized
+        }
         val extension = file.mimeType?.let { MimeTypeMap.getSingleton().getExtensionFromMimeType(it) }
         return if (MediaScanPolicy().shouldReadHeader(safe) && extension != null) {
             safe.substringBeforeLast('.', safe) + "." + extension

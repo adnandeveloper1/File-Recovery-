@@ -45,4 +45,10 @@ class MediaFileIdentityTest {
             MediaFileIdentity.document("cloud.two", "123", primaryRoot))
         assertNull(MediaFileIdentity.absolute("/unknown/photo.jpg", primaryRoot))
     }
+
+    @Test fun trashedFileUsesItsActualPathAcrossIndexAndFolderVisits() {
+        val path = "$primaryRoot/Pictures/.trashed-1777777777-photo.jpg"
+        assertEquals(MediaFileIdentity.absolute(path, primaryRoot),
+            MediaFileIdentity.document(provider, "primary:Pictures/.trashed-1777777777-photo.jpg", primaryRoot))
+    }
 }

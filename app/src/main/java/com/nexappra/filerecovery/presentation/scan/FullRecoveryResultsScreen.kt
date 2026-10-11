@@ -1,8 +1,12 @@
 package com.nexappra.filerecovery.presentation.scan
 
 import android.content.Intent
+import android.content.ActivityNotFoundException
 import android.media.MediaPlayer
 import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.Settings
 import android.widget.MediaController
 import android.widget.VideoView
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -44,14 +48,30 @@ import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import com.nexappra.filerecovery.core.ui.components.*
 import com.nexappra.filerecovery.domain.model.*
+import kotlinx.coroutines.launch
 
 @Composable
-fun FullRecoveryResultsRoute(onBack: () -> Unit, onOpenPremium: () -> Unit = {}, onDeepScan: (RecoveryCategory?) -> Unit = {}, viewModel: FullRecoveryResultsViewModel = hiltViewModel()) {
+fun FullRecoveryResultsRoute(onBack: () -> Unit, onOpenPremium: () -> Unit = {}, onDeepScan: (RecoveryCategory?) -> Unit = {},
+    onQuickScan: (RecoveryCategory?) -> Unit = {}, viewModel: FullRecoveryResultsViewModel = hiltViewModel()) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
     var previewId by rememberSaveable { mutableStateOf<String?>(null) }
     var showRepairInfo by rememberSaveable { mutableStateOf(false) }
+    val scanFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) {
+            try {
+                context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                onQuickScan(state.selectedCategory)
+            } catch (_: SecurityException) {
+                scope.launch { snackbar.showSnackbar("This folder does not provide persistent access. Please choose another folder.") }
+            }
+        }
+    }
+    val storageAccess = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        if (Build.VERSION.SDK_INT >= 30 && Environment.isExternalStorageManager()) onQuickScan(state.selectedCategory)
+    }
     val folder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) {
             runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION) }
@@ -112,8 +132,30 @@ fun FullRecoveryResultsRoute(onBack: () -> Unit, onOpenPremium: () -> Unit = {},
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text(if (state.isPartial) "Partial scan. Your found files are ready." else "Preview first. Recover the files you choose.", fontWeight = FontWeight.SemiBold)
-                        Text("Includes existing media and any accessible hidden or trashed copies. Files erased from storage cannot be recreated.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(when (state.selectedCategory) {
+                            RecoveryCategory.Photos -> "Shows readable photos from hidden folders and recycle-bin locations. A remaining copy does not prove the original was deleted. Permanently erased originals cannot be reconstructed."
+                            RecoveryCategory.Videos -> "Shows readable videos from hidden folders and recycle-bin locations. A remaining copy does not prove the original was deleted. Permanently erased originals cannot be reconstructed."
+                            RecoveryCategory.Audio -> "Shows readable audio from hidden folders and recycle-bin locations. A remaining copy does not prove the original was deleted. Permanently erased originals cannot be reconstructed."
+                            else -> "Photos, videos and audio include hidden and recycle-bin copies. Files erased from storage cannot be recreated."
+                        },
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         state.warnings.forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        run {
+                            OutlinedButton(enabled = !state.isRecovering, onClick = {
+                                try { scanFolder.launch(null) }
+                                catch (_: ActivityNotFoundException) { scope.launch { snackbar.showSnackbar("Android's file picker is unavailable. Enable the system Files app and try again.") } }
+                            }) { Text("Choose a folder for Quick Scan") }
+                            if (Build.VERSION.SDK_INT >= 30 && !Environment.isExternalStorageManager()) {
+                                OutlinedButton(enabled = !state.isRecovering, onClick = {
+                                    try {
+                                        storageAccess.launch(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
+                                    } catch (_: ActivityNotFoundException) {
+                                        try { storageAccess.launch(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)) }
+                                        catch (_: ActivityNotFoundException) { scope.launch { snackbar.showSnackbar("Open Android Settings > Privacy > All files access to allow storage access.") } }
+                                    }
+                                }) { Text("Allow All Files access for scanning") }
+                            }
+                        }
                         OutlinedButton(enabled = !state.isRecovering, onClick = {
                             val category = when (state.selectedFilter) {
                                 RecoveryResultFilter.Photos -> RecoveryCategory.Photos
@@ -140,7 +182,12 @@ fun FullRecoveryResultsRoute(onBack: () -> Unit, onOpenPremium: () -> Unit = {},
                 }
                 if (state.visibleFiles.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
                     FlowPanel(Modifier.fillMaxWidth()) {
-                        FeatureLine(Icons.Rounded.PhotoLibrary, if (state.allFiles.isEmpty()) "No media found here" else "No matching files", "Try another category, change your media access, or search a chosen folder.")
+                        FeatureLine(Icons.Rounded.PhotoLibrary,
+                            if (state.allFiles.isEmpty() && state.selectedCategory == RecoveryCategory.Photos) "No recoverable photos found"
+                            else if (state.allFiles.isEmpty() && state.selectedCategory == RecoveryCategory.Videos) "No recoverable videos found"
+                            else if (state.allFiles.isEmpty() && state.selectedCategory == RecoveryCategory.Audio) "No recoverable audio found"
+                            else if (state.allFiles.isEmpty()) "No media found here" else "No matching files",
+                            "Choose a hidden or recycle-bin folder, allow storage access, or use Deep Scan to search further.")
                     }
                 }
                 items(state.visibleFiles, key = { it.id }) { file ->
@@ -155,7 +202,13 @@ fun FullRecoveryResultsRoute(onBack: () -> Unit, onOpenPremium: () -> Unit = {},
                             }
                             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Text(file.displayName, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelMedium)
-                                Text(if (file.isTrashed) "Trash copy" else if (file.isHidden) "Hidden media" else "On device", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(when {
+                                    file.isTrashed -> "Trash copy"
+                                    RecoveryFileSource.RecycleBin in file.sources -> "Recycle-bin folder"
+                                    file.hiddenReason == RecoveryFileHiddenReason.NoMediaDirectory -> "Hidden (.nomedia)"
+                                    file.isHidden -> "Hidden media"
+                                    else -> "On device"
+                                }, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     }
