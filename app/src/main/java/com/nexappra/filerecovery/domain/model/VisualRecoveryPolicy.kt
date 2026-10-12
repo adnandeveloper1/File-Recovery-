@@ -14,6 +14,9 @@ object VisualRecoveryPolicy {
 
     fun isVisual(type: RecoveryFileType): Boolean = type == RecoveryFileType.Photo || type == RecoveryFileType.Video
 
+    fun isThumbnailLocation(path: String): Boolean = parts(path)
+        .any { it.equals(".thumbnails", true) || it.equals("thumbnails", true) }
+
     fun recoveryName(safeName: String, fallback: String = "recovered_media"): String =
         safeName.replace(trashedPrefix, "").trimStart('.').ifBlank { fallback }
 

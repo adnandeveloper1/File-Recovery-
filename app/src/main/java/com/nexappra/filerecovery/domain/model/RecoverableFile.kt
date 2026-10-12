@@ -18,4 +18,5 @@ data class RecoverableFile(
     val dateExpiresMillis: Long? = null,
     // Null means library visibility could not be verified with the current access.
     val isInPhotoLibrary: Boolean? = null,
+    val isInVideoLibrary: Boolean? = null,
 )

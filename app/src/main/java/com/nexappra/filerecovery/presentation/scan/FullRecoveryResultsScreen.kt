@@ -209,7 +209,7 @@ fun FullRecoveryResultsRoute(onBack: () -> Unit, onOpenPremium: () -> Unit = {},
                                     file.isHidden -> "Hidden media"
                                     else -> "On device"
                                 }, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                if (file.fileType == RecoveryFileType.Photo) Text(
+                                if (VisualRecoveryPolicy.isVisual(file.fileType)) Text(
                                     "Folder: ${file.relativePath?.ifBlank { "Shared storage root" } ?: "Location unavailable"}", maxLines = 2,
                                     overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -250,7 +250,7 @@ private fun MediaPreview(file: RecoverableFile, premium: Boolean, onClose: () ->
                     if (previewFailed) Text("This photo cannot be previewed. It may be unavailable, damaged or use an unsupported format.", modifier = Modifier.align(Alignment.Center).padding(20.dp))
                 }
                 Text(file.displayName, fontWeight = FontWeight.SemiBold)
-                if (file.fileType == RecoveryFileType.Photo) Text("Folder: ${file.relativePath?.ifBlank { "Shared storage root" } ?: "Location unavailable"}",
+                if (VisualRecoveryPolicy.isVisual(file.fileType)) Text("Folder: ${file.relativePath?.ifBlank { "Shared storage root" } ?: "Location unavailable"}",
                     style = MaterialTheme.typography.bodySmall)
                 Text("${file.fileType.name} · ${"%.2f".format(file.sizeBytes / (1024.0 * 1024.0))} MB", style = MaterialTheme.typography.bodySmall)
                 if (!premium && file.fileType != RecoveryFileType.Audio) Button(onClick = onPremium, modifier = Modifier.fillMaxWidth()) { Text("Unlock advanced preview") }

@@ -25,7 +25,7 @@ class RecoveryViewModelTest {
         var category: RecoveryCategory? = null
         var fail = false
         val photo = RecoverableFile("photo", "content://test/photo", "photo.jpg", "image/jpeg", 24, 0, "Pictures/.hidden", RecoveryFileType.Photo,
-            setOf(RecoveryFileSource.Hidden), true, RecoveryFileHiddenReason.HiddenDirectory, false, null, isInPhotoLibrary = false)
+            setOf(RecoveryFileSource.Hidden), true, RecoveryFileHiddenReason.HiddenDirectory, false, null, isInPhotoLibrary = false, isInVideoLibrary = false)
         var session = RecoveryScanSession("session", RecoveryScanMode.Quick, durationMillis = 10, totalBytesScanned = 24, files = listOf(photo), locations = emptyList(), completedAtMillis = 0)
         override suspend fun performFullDeviceScan(selectedCategory: RecoveryCategory?, mode: RecoveryScanMode, onSnapshot: suspend (RecoveryScanSnapshot) -> Unit): RecoveryScanSession {
             scans++; category = selectedCategory; return session
@@ -344,5 +344,42 @@ class RecoveryViewModelTest {
         runCurrent()
         assertEquals(listOf("photo"), restored.uiState.value.allFiles.map { it.id })
         assertTrue(restored.uiState.value.selectedIds.isEmpty())
+    }
+
+    @Test fun olderVideoResultsRejectIndexedRecycleVideosWithoutRetargetingCompactSelection() = runTest(dispatcher) {
+        val repo = Repository()
+        val hidden = repo.photo.copy(id = "hidden_video", fileType = RecoveryFileType.Video, displayName = "clip.mp4", mimeType = "video/mp4")
+        val gallery = hidden.copy(id = "gallery_video", relativePath = "Movies/Trash", isInVideoLibrary = true, dateModifiedMillis = 2)
+        repo.session = repo.session.copy(selectedCategory = RecoveryCategory.Videos, files = listOf(gallery, hidden))
+        val state = SavedStateHandle(mapOf(AppDestination.FullRecoveryResults.ArgSessionId to "session",
+            "media_result_policy" to 2, "selected_indices" to intArrayOf(0)))
+        val vm = FullRecoveryResultsViewModel(state, repo, Premium(true))
+        runCurrent()
+        assertEquals(listOf("hidden_video"), vm.uiState.value.allFiles.map { it.id })
+        assertTrue(vm.uiState.value.selectedIds.isEmpty())
+    }
+
+    @Test fun aVideoEnteringTheLibraryCannotShiftModernSelectionOntoAnotherVideo() = runTest(dispatcher) {
+        val repo = Repository()
+        val first = repo.photo.copy(id = "first_video", fileType = RecoveryFileType.Video, displayName = "first.mp4", mimeType = "video/mp4", dateModifiedMillis = 2)
+        val second = first.copy(id = "second_video", dateModifiedMillis = 1)
+        repo.session = repo.session.copy(selectedCategory = RecoveryCategory.Videos, files = listOf(first, second))
+        val state = SavedStateHandle(mapOf(AppDestination.FullRecoveryResults.ArgSessionId to "session"))
+        val vm = FullRecoveryResultsViewModel(state, repo, Premium(true))
+        runCurrent(); vm.onToggleSelection(first.id)
+        repo.session = repo.session.copy(files = listOf(first.copy(isInVideoLibrary = true), second))
+        val restored = FullRecoveryResultsViewModel(state, repo, Premium(true))
+        runCurrent()
+        assertEquals(listOf(second.id), restored.uiState.value.allFiles.map { it.id })
+        assertTrue(restored.uiState.value.selectedIds.isEmpty())
+    }
+
+    @Test fun photoPolicyVersionTwoKeepsAValidPhotoSelection() = runTest(dispatcher) {
+        val repo = Repository()
+        val state = SavedStateHandle(mapOf(AppDestination.FullRecoveryResults.ArgSessionId to "session",
+            "media_result_policy" to 2, "selected_indices" to intArrayOf(0)))
+        val vm = FullRecoveryResultsViewModel(state, repo, Premium(true))
+        runCurrent()
+        assertEquals(setOf("photo"), vm.uiState.value.selectedIds)
     }
 }

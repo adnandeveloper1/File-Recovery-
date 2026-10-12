@@ -2,8 +2,7 @@ package com.nexappra.filerecovery.domain.model
 
 /** Photos must have recovery context and be absent from the visible photo library. */
 object PhotoRecoveryPolicy {
-    fun isThumbnailLocation(path: String): Boolean = path.split('/', '\\')
-        .any { it.equals(".thumbnails", true) || it.equals("thumbnails", true) }
+    fun isThumbnailLocation(path: String): Boolean = VisualRecoveryPolicy.isThumbnailLocation(path)
 
     fun recoveryName(safeName: String): String = VisualRecoveryPolicy.recoveryName(safeName, "recovered_photo")
 
