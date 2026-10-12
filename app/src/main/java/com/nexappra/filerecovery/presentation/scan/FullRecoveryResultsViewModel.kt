@@ -12,6 +12,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.security.MessageDigest
 import javax.inject.Inject
 
 sealed interface FullRecoveryResultsEvent {
@@ -70,23 +71,35 @@ class FullRecoveryResultsViewModel @Inject constructor(
         // Positions refer to the immutable, persisted session in the same stable order.
         savedStateHandle["selected_indices"] = uiState.value.allFiles.withIndex()
             .filter { it.value.id in ids }.map { it.index }.toIntArray()
-        savedStateHandle["media_result_policy"] = 1
+        savedStateHandle["media_result_policy"] = 2
+        savedStateHandle["selected_order_signature"] = orderSignature(uiState.value.allFiles)
         savedStateHandle.remove<ArrayList<String>>("selected_ids")
         mutableState.update { it.copy(selectedIds = ids, selectedTotalSizeBytes = it.allFiles.filter { f -> f.id in ids }.sumOf { f -> f.sizeBytes }) }
     }
     private fun orderedFiles(session: RecoveryScanSession): List<RecoverableFile> {
         val media = session.files.filter { it.fileType in setOf(RecoveryFileType.Photo, RecoveryFileType.Video, RecoveryFileType.Audio) }
         val eligible = media.filter(MediaRecoveryPolicy::accepts)
+        val ordered = eligible.sortedByDescending { it.dateModifiedMillis }
+        val previousOrder = savedStateHandle.get<String>("selected_order_signature")
         // Removing gallery entries from an older session must not retarget its saved positions.
-        if (savedStateHandle.get<Int>("media_result_policy") != 1) {
+        if (previousOrder != null && previousOrder != orderSignature(ordered)) {
+            savedStateHandle.remove<IntArray>("selected_indices")
+        } else if (savedStateHandle.get<Int>("media_result_policy") != 2) {
             val previousFiles = when {
+                savedStateHandle.get<Int>("media_result_policy") == 1 -> media.filter { VisualRecoveryPolicy.hasRecoveryContext(it) }
                 savedStateHandle.get<Int>("visual_result_policy") == 1 -> media.filter(VisualRecoveryPolicy::accepts)
-                savedStateHandle.get<Int>("photo_result_policy") == 1 -> media.filter(PhotoRecoveryPolicy::accepts)
+                savedStateHandle.get<Int>("photo_result_policy") == 1 -> media.filter { it.fileType != RecoveryFileType.Photo || VisualRecoveryPolicy.accepts(it) }
                 else -> media
             }
             if (eligible.size != previousFiles.size) savedStateHandle.remove<IntArray>("selected_indices")
         }
-        return eligible.sortedByDescending { it.dateModifiedMillis }
+        return ordered
+    }
+
+    private fun orderSignature(files: List<RecoverableFile>): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        files.forEach { digest.update(it.id.toByteArray(Charsets.UTF_8)); digest.update(0.toByte()) }
+        return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
     private fun restoredSelection(files: List<RecoverableFile>): Set<String> {

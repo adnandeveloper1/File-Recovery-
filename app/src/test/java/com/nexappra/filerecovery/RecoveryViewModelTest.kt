@@ -25,7 +25,7 @@ class RecoveryViewModelTest {
         var category: RecoveryCategory? = null
         var fail = false
         val photo = RecoverableFile("photo", "content://test/photo", "photo.jpg", "image/jpeg", 24, 0, "Pictures/.hidden", RecoveryFileType.Photo,
-            setOf(RecoveryFileSource.Hidden), true, RecoveryFileHiddenReason.HiddenDirectory, false, null)
+            setOf(RecoveryFileSource.Hidden), true, RecoveryFileHiddenReason.HiddenDirectory, false, null, isInPhotoLibrary = false)
         var session = RecoveryScanSession("session", RecoveryScanMode.Quick, durationMillis = 10, totalBytesScanned = 24, files = listOf(photo), locations = emptyList(), completedAtMillis = 0)
         override suspend fun performFullDeviceScan(selectedCategory: RecoveryCategory?, mode: RecoveryScanMode, onSnapshot: suspend (RecoveryScanSnapshot) -> Unit): RecoveryScanSession {
             scans++; category = selectedCategory; return session
@@ -317,5 +317,32 @@ class RecoveryViewModelTest {
         runCurrent()
         assertEquals(1, repo.copies)
         assertTrue(vm.uiState.value.selectedIds.isEmpty())
+    }
+
+    @Test fun previousMediaResultsDropThumbnailsAndVisibleLibraryPhotosWithoutRetargetingSelection() = runTest(dispatcher) {
+        val repo = Repository()
+        val thumbnail = repo.photo.copy(id = "thumbnail", relativePath = "DCIM/.thumbnails", dateModifiedMillis = 3)
+        val visible = repo.photo.copy(id = "visible", isInPhotoLibrary = true, dateModifiedMillis = 2)
+        repo.session = repo.session.copy(files = listOf(thumbnail, visible, repo.photo))
+        val state = SavedStateHandle(mapOf(AppDestination.FullRecoveryResults.ArgSessionId to "session",
+            "media_result_policy" to 1, "selected_indices" to intArrayOf(0)))
+        val vm = FullRecoveryResultsViewModel(state, repo, Premium(true))
+        runCurrent()
+        assertEquals(listOf("photo"), vm.uiState.value.allFiles.map { it.id })
+        assertTrue(vm.uiState.value.selectedIds.isEmpty())
+    }
+
+    @Test fun aPhotoEnteringTheLibraryCannotShiftModernSavedSelectionToAnotherFile() = runTest(dispatcher) {
+        val repo = Repository()
+        val first = repo.photo.copy(id = "first", dateModifiedMillis = 2)
+        repo.session = repo.session.copy(files = listOf(first, repo.photo))
+        val state = SavedStateHandle(mapOf(AppDestination.FullRecoveryResults.ArgSessionId to "session"))
+        val vm = FullRecoveryResultsViewModel(state, repo, Premium(true))
+        runCurrent(); vm.onToggleSelection("first")
+        repo.session = repo.session.copy(files = listOf(first.copy(isInPhotoLibrary = true), repo.photo))
+        val restored = FullRecoveryResultsViewModel(state, repo, Premium(true))
+        runCurrent()
+        assertEquals(listOf("photo"), restored.uiState.value.allFiles.map { it.id })
+        assertTrue(restored.uiState.value.selectedIds.isEmpty())
     }
 }

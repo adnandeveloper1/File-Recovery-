@@ -43,7 +43,7 @@ class MediaRecoveryPolicyTest {
     @Test fun combinedScansApplyTheSameContextToEveryMediaType() {
         listOf(RecoveryFileType.Photo, RecoveryFileType.Video, RecoveryFileType.Audio).forEach { type ->
             assertFalse(MediaRecoveryPolicy.accepts(audio().copy(fileType = type)))
-            assertTrue(MediaRecoveryPolicy.accepts(audio(".hidden").copy(fileType = type)))
+            assertTrue(MediaRecoveryPolicy.accepts(audio(".hidden").copy(fileType = type, isInPhotoLibrary = false)))
         }
         assertFalse(MediaRecoveryPolicy.accepts(audio(".hidden").copy(fileType = RecoveryFileType.Document)))
     }

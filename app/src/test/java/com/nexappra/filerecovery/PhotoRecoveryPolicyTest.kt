@@ -7,7 +7,7 @@ import org.junit.Test
 class PhotoRecoveryPolicyTest {
     private fun photo(path: String = "DCIM/Camera", name: String = "holiday.jpg") = RecoverableFile(
         "photo", "content://photos/1", name, "image/jpeg", 200, 0, path, RecoveryFileType.Photo,
-        emptySet(), false, null, false, "external_primary",
+        emptySet(), false, null, false, "external_primary", isInPhotoLibrary = false,
     )
 
     @Test fun ordinaryGalleryPhotosAreExcludedEvenInCombinedScans() {
@@ -71,5 +71,28 @@ class PhotoRecoveryPolicyTest {
         assertEquals("holiday.jpg", PhotoRecoveryPolicy.recoveryName("holiday.jpg"))
         assertEquals("trashed-family.jpg", PhotoRecoveryPolicy.recoveryName("trashed-family.jpg"))
         assertEquals("recovered_photo", PhotoRecoveryPolicy.recoveryName("..."))
+    }
+
+    @Test fun galleryThumbnailDirectoriesNeverBecomePhotoRecoveryResults() {
+        listOf("DCIM/.thumbnails", "Pictures/.THUMBNAILS/Nested", "Pictures/Thumbnails", "Pictures\\.thumbnails").forEach { path ->
+            assertFalse(path, PhotoRecoveryPolicy.isCandidate("photo.jpg", path, noMedia = true))
+            assertFalse(path, PhotoRecoveryPolicy.accepts(photo(path).copy(isTrashed = true)))
+        }
+        assertFalse(PhotoRecoveryPolicy.isCandidate(".thumbdata4-123", "Pictures/.private"))
+        assertTrue(PhotoRecoveryPolicy.accepts(photo("Pictures/.private", "thumbnail-holiday.jpg")))
+    }
+
+    @Test fun visibleLibraryEvidenceOverridesHiddenAndRecycleHints() {
+        listOf("Pictures/.private", "Pictures/Trash", "Pictures/Private").forEach { path ->
+            assertFalse(path, PhotoRecoveryPolicy.accepts(photo(path).copy(isInPhotoLibrary = true,
+                sources = setOf(RecoveryFileSource.NoMedia), hiddenReason = RecoveryFileHiddenReason.NoMediaDirectory)))
+        }
+        assertFalse(PhotoRecoveryPolicy.accepts(photo().copy(isInPhotoLibrary = true, isTrashed = true)))
+        assertFalse(PhotoRecoveryPolicy.accepts(photo().copy(isHidden = true, sources = setOf(RecoveryFileSource.Hidden))))
+    }
+
+    @Test fun unverifiableHiddenPhotosAreWithheldWhileConfirmedTrashRemainsAvailable() {
+        assertFalse(PhotoRecoveryPolicy.accepts(photo("Pictures/.private").copy(isInPhotoLibrary = null)))
+        assertTrue(PhotoRecoveryPolicy.accepts(photo().copy(isInPhotoLibrary = null, isTrashed = true)))
     }
 }

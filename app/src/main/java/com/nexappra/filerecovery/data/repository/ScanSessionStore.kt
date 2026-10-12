@@ -28,6 +28,7 @@ class ScanSessionStore @Inject constructor(@ApplicationContext private val conte
                 .put("path", f.relativePath).put("type", f.fileType.name).put("hidden", f.isHidden)
                 .put("trashed", f.isTrashed).put("volume", f.storageVolume).put("duration", f.durationMillis)
                 .put("hiddenReason", f.hiddenReason?.name).put("expires", f.dateExpiresMillis)
+                .put("photoLibrary", f.isInPhotoLibrary)
                 .put("sources", JSONArray(f.sources.map { it.name }))) } })
         val file = AtomicFile(File(directory, "${session.id}.json"))
         val output = file.startWrite()
@@ -56,7 +57,8 @@ class ScanSessionStore @Inject constructor(@ApplicationContext private val conte
                         f.optBoolean("hidden"), f.optString("hiddenReason").takeIf { it.isNotBlank() }?.let(RecoveryFileHiddenReason::valueOf),
                         f.optBoolean("trashed"), f.optString("volume"),
                         if (f.has("duration") && !f.isNull("duration")) f.getLong("duration") else null,
-                        if (f.has("expires") && !f.isNull("expires")) f.getLong("expires") else null)
+                        if (f.has("expires") && !f.isNull("expires")) f.getLong("expires") else null,
+                        if (f.has("photoLibrary") && !f.isNull("photoLibrary")) f.getBoolean("photoLibrary") else null)
                 }, emptyList(), root.getLong("completed"), root.optBoolean("partial"),
                 root.optJSONArray("warnings")?.let { a -> (0 until a.length()).map { a.getString(it) } }.orEmpty())
         }.getOrNull()

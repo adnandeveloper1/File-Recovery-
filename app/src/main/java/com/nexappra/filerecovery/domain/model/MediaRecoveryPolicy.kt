@@ -9,7 +9,9 @@ object MediaRecoveryPolicy {
 
     fun isMedia(type: RecoveryFileType): Boolean = type in types
 
-    fun accepts(file: RecoverableFile): Boolean = isMedia(file.fileType) && VisualRecoveryPolicy.hasRecoveryContext(file)
+    fun accepts(file: RecoverableFile): Boolean = isMedia(file.fileType) &&
+        (if (file.fileType == RecoveryFileType.Photo) PhotoRecoveryPolicy.accepts(file)
+        else VisualRecoveryPolicy.hasRecoveryContext(file))
 
     fun exploreQuickDirectory(path: String, noMedia: Boolean, includesAudio: Boolean): Boolean =
         VisualRecoveryPolicy.exploreQuickDirectory(path, noMedia) ||

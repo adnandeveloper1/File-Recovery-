@@ -1,7 +1,10 @@
 package com.nexappra.filerecovery.domain.model
 
-/** Photo-specific entry points retained for existing callers. */
+/** Photos must have recovery context and be absent from the visible photo library. */
 object PhotoRecoveryPolicy {
+    fun isThumbnailLocation(path: String): Boolean = path.split('/', '\\')
+        .any { it.equals(".thumbnails", true) || it.equals("thumbnails", true) }
+
     fun recoveryName(safeName: String): String = VisualRecoveryPolicy.recoveryName(safeName, "recovered_photo")
 
     fun hiddenReason(name: String, path: String, noMedia: Boolean = false): RecoveryFileHiddenReason? =
@@ -11,10 +14,13 @@ object PhotoRecoveryPolicy {
         VisualRecoveryPolicy.isRecycleLocation(name, path)
 
     fun isCandidate(name: String, path: String, trashed: Boolean = false, noMedia: Boolean = false): Boolean =
-        VisualRecoveryPolicy.isCandidate(name, path, trashed, noMedia)
+        !isThumbnailLocation(path) && !name.startsWith(".thumbdata", true) &&
+            VisualRecoveryPolicy.isCandidate(name, path, trashed, noMedia)
 
     fun accepts(file: RecoverableFile): Boolean = file.fileType != RecoveryFileType.Photo ||
-        VisualRecoveryPolicy.accepts(file)
+        (isCandidate(file.displayName, file.relativePath.orEmpty(), file.isTrashed,
+            file.hiddenReason == RecoveryFileHiddenReason.NoMediaDirectory || RecoveryFileSource.NoMedia in file.sources) &&
+            (file.isInPhotoLibrary == false || (file.isInPhotoLibrary == null && file.isTrashed)))
 
     fun exploreQuickDirectory(path: String, noMedia: Boolean): Boolean =
         VisualRecoveryPolicy.exploreQuickDirectory(path, noMedia)
