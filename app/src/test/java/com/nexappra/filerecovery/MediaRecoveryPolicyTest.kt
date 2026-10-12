@@ -7,7 +7,7 @@ import org.junit.Test
 class MediaRecoveryPolicyTest {
     private fun audio(path: String = "Music", name: String = "recording.m4a") = RecoverableFile(
         "audio", "content://audio/1", name, "audio/mp4", 200, 0, path, RecoveryFileType.Audio,
-        emptySet(), false, null, false, "external_primary",
+        emptySet(), false, null, false, "external_primary", isInAudioLibrary = false,
     )
 
     @Test fun normalMusicRecordingsAndUnindexedCopiesAreExcluded() {

@@ -13,7 +13,8 @@ object MediaRecoveryPolicy {
         when (file.fileType) {
             RecoveryFileType.Photo -> PhotoRecoveryPolicy.accepts(file)
             RecoveryFileType.Video -> VideoRecoveryPolicy.accepts(file)
-            else -> VisualRecoveryPolicy.hasRecoveryContext(file)
+            RecoveryFileType.Audio -> AudioRecoveryPolicy.accepts(file)
+            else -> false
         }
 
     fun exploreQuickDirectory(path: String, noMedia: Boolean, includesAudio: Boolean): Boolean =

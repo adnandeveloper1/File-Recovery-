@@ -19,4 +19,5 @@ data class RecoverableFile(
     // Null means library visibility could not be verified with the current access.
     val isInPhotoLibrary: Boolean? = null,
     val isInVideoLibrary: Boolean? = null,
+    val isInAudioLibrary: Boolean? = null,
 )

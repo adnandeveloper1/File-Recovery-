@@ -59,7 +59,7 @@ class VideoRecoveryPolicyTest {
     }
 
     @Test fun sharedPolicyLeavesAudioAndVerifiedPhotosEligible() {
-        assertTrue(MediaRecoveryPolicy.accepts(video(".private").copy(fileType = RecoveryFileType.Audio)))
+        assertTrue(MediaRecoveryPolicy.accepts(video(".private").copy(fileType = RecoveryFileType.Audio, isInAudioLibrary = false)))
         assertTrue(MediaRecoveryPolicy.accepts(video(".private").copy(fileType = RecoveryFileType.Photo, isInPhotoLibrary = false)))
         assertFalse(MediaRecoveryPolicy.accepts(video(".private").copy(fileType = RecoveryFileType.Photo)))
     }

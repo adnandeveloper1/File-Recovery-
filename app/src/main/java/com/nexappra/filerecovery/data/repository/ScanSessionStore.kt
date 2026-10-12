@@ -30,6 +30,7 @@ class ScanSessionStore @Inject constructor(@ApplicationContext private val conte
                 .put("hiddenReason", f.hiddenReason?.name).put("expires", f.dateExpiresMillis)
                 .put("photoLibrary", f.isInPhotoLibrary)
                 .put("videoLibrary", f.isInVideoLibrary)
+                .put("audioLibrary", f.isInAudioLibrary)
                 .put("sources", JSONArray(f.sources.map { it.name }))) } })
         val file = AtomicFile(File(directory, "${session.id}.json"))
         val output = file.startWrite()
@@ -60,7 +61,8 @@ class ScanSessionStore @Inject constructor(@ApplicationContext private val conte
                         if (f.has("duration") && !f.isNull("duration")) f.getLong("duration") else null,
                         if (f.has("expires") && !f.isNull("expires")) f.getLong("expires") else null,
                         if (f.has("photoLibrary") && !f.isNull("photoLibrary")) f.getBoolean("photoLibrary") else null,
-                        if (f.has("videoLibrary") && !f.isNull("videoLibrary")) f.getBoolean("videoLibrary") else null)
+                        if (f.has("videoLibrary") && !f.isNull("videoLibrary")) f.getBoolean("videoLibrary") else null,
+                        if (f.has("audioLibrary") && !f.isNull("audioLibrary")) f.getBoolean("audioLibrary") else null)
                 }, emptyList(), root.getLong("completed"), root.optBoolean("partial"),
                 root.optJSONArray("warnings")?.let { a -> (0 until a.length()).map { a.getString(it) } }.orEmpty())
         }.getOrNull()

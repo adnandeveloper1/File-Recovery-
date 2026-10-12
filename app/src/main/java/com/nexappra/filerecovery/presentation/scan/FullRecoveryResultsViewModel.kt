@@ -71,7 +71,7 @@ class FullRecoveryResultsViewModel @Inject constructor(
         // Positions refer to the immutable, persisted session in the same stable order.
         savedStateHandle["selected_indices"] = uiState.value.allFiles.withIndex()
             .filter { it.value.id in ids }.map { it.index }.toIntArray()
-        savedStateHandle["media_result_policy"] = 3
+        savedStateHandle["media_result_policy"] = 4
         savedStateHandle["selected_order_signature"] = orderSignature(uiState.value.allFiles)
         savedStateHandle.remove<ArrayList<String>>("selected_ids")
         mutableState.update { it.copy(selectedIds = ids, selectedTotalSizeBytes = it.allFiles.filter { f -> f.id in ids }.sumOf { f -> f.sizeBytes }) }
@@ -84,8 +84,15 @@ class FullRecoveryResultsViewModel @Inject constructor(
         // Removing gallery entries from an older session must not retarget its saved positions.
         if (previousOrder != null && previousOrder != orderSignature(ordered)) {
             savedStateHandle.remove<IntArray>("selected_indices")
-        } else if (savedStateHandle.get<Int>("media_result_policy") != 3) {
+        } else if (savedStateHandle.get<Int>("media_result_policy") != 4) {
             val previousFiles = when {
+                savedStateHandle.get<Int>("media_result_policy") == 3 -> media.filter {
+                    when (it.fileType) {
+                        RecoveryFileType.Photo -> PhotoRecoveryPolicy.accepts(it)
+                        RecoveryFileType.Video -> VideoRecoveryPolicy.accepts(it)
+                        else -> VisualRecoveryPolicy.hasRecoveryContext(it)
+                    }
+                }
                 savedStateHandle.get<Int>("media_result_policy") == 2 -> media.filter {
                     if (it.fileType == RecoveryFileType.Photo) PhotoRecoveryPolicy.accepts(it) else VisualRecoveryPolicy.hasRecoveryContext(it)
                 }

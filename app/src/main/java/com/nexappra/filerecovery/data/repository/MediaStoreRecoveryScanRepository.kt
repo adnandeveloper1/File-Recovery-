@@ -68,12 +68,11 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
         val warnings = linkedSetOf<String>()
         val folderTypes = policy.types
         val folderBudget = FolderScanBudget(mode == RecoveryScanMode.Quick)
-        val visualTypes = policy.types.filter(VisualRecoveryPolicy::isVisual)
-        val libraries = visualTypes.associateWith { MediaLibraryIndex(it, complete = false) }.toMutableMap()
+        val libraries = policy.types.associateWith { MediaLibraryIndex(it, complete = false) }.toMutableMap()
+        fun isInLibrary(identity: String, uri: String): Boolean = libraries.values.any { it.contains(identity, uri) }
         val stages = buildList {
-            addAll(visualTypes.map { locationFor(it) })
+            addAll(policy.types.map { locationFor(it) })
             if (Build.VERSION.SDK_INT >= 30) add(RecoveryScanLocationType.MediaStoreTrash)
-            addAll(policy.types.filterNot(VisualRecoveryPolicy::isVisual).map { locationFor(it) })
             addAll(listOf(RecoveryScanLocationType.AuthorizedFolders, RecoveryScanLocationType.AccessibleStorage))
         }
         var locations = stages.map { RecoveryScanLocationState(it) }
@@ -178,7 +177,7 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
             publish(force = true)
             val completed = withTimeoutOrNull(3_600_000L) {
                 val volumes = if (Build.VERSION.SDK_INT >= 29) MediaStore.getExternalVolumeNames(context).toList() else listOf("external")
-                visualTypes.forEach { type ->
+                policy.types.forEach { type ->
                     stage(locationFor(type)) {
                         val library = readMediaLibrary(volumes, type, ::readFailed)
                         libraries[type] = library
@@ -197,23 +196,16 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
                         }
                     }
                 }
-                policy.types.filterNot(VisualRecoveryPolicy::isVisual).forEach { type ->
-                    stage(locationFor(type)) {
-                        volumes.forEach { volume ->
-                            readLocation { scanMediaCollection(volume, type, policy, ::record) }
-                        }
-                    }
-                }
                 run {
                     suspend fun searchFolderSources() {
                         stage(RecoveryScanLocationType.AuthorizedFolders) {
                             resolver.persistedUriPermissions.filter { it.isReadPermission && DocumentsContract.isTreeUri(it.uri) }
                                 .sortedByDescending { it.persistedTime }
-                                .forEach { permission -> readLocation { scanTree(permission.uri, policy, folderTypes, folderBudget, ::readFailed, ::record) } }
+                                .forEach { permission -> readLocation { scanTree(permission.uri, policy, folderTypes, folderBudget, ::readFailed, ::isInLibrary, ::record) } }
                         }
                         stage(RecoveryScanLocationType.AccessibleStorage) {
                             if (canTraverseStorage()) {
-                                scanDirectories(policy, folderTypes, mode, folderBudget, ::readFailed, ::record)
+                                scanDirectories(policy, folderTypes, mode, folderBudget, ::readFailed, ::isInLibrary, ::record)
                             }
                             if (!canTraverseStorage()) {
                                 warnings += "Hidden media searches are limited to chosen folders. Choose a folder or allow All Files access to search more locations."
@@ -252,7 +244,12 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
 
     private suspend fun readMediaLibrary(volumes: List<String>, type: RecoveryFileType, onReadError: (Exception) -> Unit): MediaLibraryIndex {
         val permission = if (Build.VERSION.SDK_INT >= 33) {
-            if (type == RecoveryFileType.Video) android.Manifest.permission.READ_MEDIA_VIDEO else android.Manifest.permission.READ_MEDIA_IMAGES
+            when (type) {
+                RecoveryFileType.Photo -> android.Manifest.permission.READ_MEDIA_IMAGES
+                RecoveryFileType.Video -> android.Manifest.permission.READ_MEDIA_VIDEO
+                RecoveryFileType.Audio -> android.Manifest.permission.READ_MEDIA_AUDIO
+                else -> error("Unsupported media type: $type")
+            }
         } else android.Manifest.permission.READ_EXTERNAL_STORAGE
         val index = MediaLibraryIndex(type,
             context.checkSelfPermission(permission) == android.content.pm.PackageManager.PERMISSION_GRANTED ||
@@ -299,9 +296,11 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
         return index
     }
 
-    private fun libraryAccessWarning(type: RecoveryFileType): String = if (type == RecoveryFileType.Video)
-        "Allow full video or All Files access to exclude gallery videos. Only confirmed trash videos are shown while the video library check is incomplete."
-    else "Allow full photo or All Files access to exclude gallery photos. Only confirmed trash photos are shown while the photo library check is incomplete."
+    private fun libraryAccessWarning(type: RecoveryFileType): String = when (type) {
+        RecoveryFileType.Audio -> "Allow audio or All Files access to exclude ordinary library audio. Only confirmed trash audio is shown while the audio library check is incomplete."
+        RecoveryFileType.Video -> "Allow full video or All Files access to exclude gallery videos. Only confirmed trash videos are shown while the video library check is incomplete."
+        else -> "Allow full photo or All Files access to exclude gallery photos. Only confirmed trash photos are shown while the photo library check is incomplete."
+    }
 
     private suspend fun scanMediaCollection(volume: String, type: RecoveryFileType, policy: MediaScanPolicy,
         record: suspend (RecoverableFile) -> Unit, trashOnly: Boolean = false) {
@@ -374,7 +373,7 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
 
     /** One child query per directory; gather metadata first so a trailing .nomedia also hides earlier rows. */
     private suspend fun scanTree(tree: Uri, policy: MediaScanPolicy, types: Set<RecoveryFileType>, budget: FolderScanBudget,
-        onReadError: (Exception) -> Unit, record: suspend (RecoverableFile) -> Unit) {
+        onReadError: (Exception) -> Unit, isInLibrary: (String, String) -> Boolean, record: suspend (RecoverableFile) -> Unit) {
         if (!budget.canSearchDirectory()) return
         val queue = ArrayDeque<TreeFolder>()
         val visited = HashSet<String>()
@@ -385,7 +384,7 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
                 if (c.moveToFirst()) c.getString(0).orEmpty() else ""
             }.orEmpty()
         }
-        val inheritedNoMedia = types.any(VisualRecoveryPolicy::isVisual) && hasAccessibleNoMediaAncestor(tree, rootId, budget)
+        val inheritedNoMedia = hasAccessibleNoMediaAncestor(tree, rootId, budget)
         queue.add(TreeFolder(rootId, rootPath, 0, inheritedNoMedia))
         val projection = arrayOf("document_id", "_display_name", "mime_type", "_size", "last_modified")
         while (queue.isNotEmpty() && budget.canSearchDirectory()) {
@@ -410,9 +409,7 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
                         val entry = TreeEntry(c.getString(0), c.getString(1).orEmpty(), c.getString(2),
                             if (c.isNull(3)) null else c.getLong(3), c.getLong(4))
                         if (entry.mime == DocumentsContract.Document.MIME_TYPE_DIR) {
-                            val scansVisual = types.any(VisualRecoveryPolicy::isVisual)
                             if (entry.name in setOf(".git", "node_modules") ||
-                                (entry.name == "Android" && !scansVisual) ||
                                 (folder.path == "Android" && entry.name != "media")) continue
                             run {
                                 val childPath = listOf(folder.path, entry.name).filter { it.isNotBlank() }.joinToString("/")
@@ -425,8 +422,11 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
                             if (entry.name == ".nomedia") continue
                             if (types == setOf(RecoveryFileType.Photo) && !PhotoRecoveryPolicy.isCandidate(entry.name, folder.path, noMedia = noMedia)) continue
                             if (types == setOf(RecoveryFileType.Video) && !VideoRecoveryPolicy.isCandidate(entry.name, folder.path, noMedia = noMedia)) continue
+                            if (types == setOf(RecoveryFileType.Audio) && !AudioRecoveryPolicy.isCandidate(entry.name, folder.path, noMedia = noMedia)) continue
                             if (!VisualRecoveryPolicy.isCandidate(entry.name, folder.path, noMedia = noMedia)) continue
                             val uri = DocumentsContract.buildDocumentUriUsingTree(tree, entry.id)
+                            val identity = MediaFileIdentity.document(tree.authority, entry.id, Environment.getExternalStorageDirectory().path)
+                            if (isInLibrary(identity, uri.toString())) continue
                             val (type, resolvedMime) = identifyMedia(uri, entry.name, entry.mime, policy) ?: continue
                             if (type !in types) continue
                             val size = if (type == RecoveryFileType.Audio) {
@@ -437,7 +437,7 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
                             } else entry.size ?: 0L
                             record(mediaFile(uri, entry.name, resolvedMime, size, entry.modified, folder.path,
                                 type, "folder", false, fromFolder = true,
-                                identity = MediaFileIdentity.document(tree.authority, entry.id, Environment.getExternalStorageDirectory().path), noMedia = noMedia))
+                                identity = identity, noMedia = noMedia))
                         }
                     }
                 }
@@ -487,7 +487,7 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
     }
 
     private suspend fun scanDirectories(policy: MediaScanPolicy, types: Set<RecoveryFileType>, mode: RecoveryScanMode, budget: FolderScanBudget,
-        onReadError: (Exception) -> Unit, record: suspend (RecoverableFile) -> Unit) {
+        onReadError: (Exception) -> Unit, isInLibrary: (String, String) -> Boolean, record: suspend (RecoverableFile) -> Unit) {
         val storageRoot = Environment.getExternalStorageDirectory()
         val roots = linkedSetOf(storageRoot)
         context.getExternalFilesDirs(null)?.forEach { ext ->
@@ -532,14 +532,19 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
                     if (!file.isFile || file.length() <= 0L || file.name == ".nomedia") continue
                     if (types == setOf(RecoveryFileType.Photo) && !PhotoRecoveryPolicy.isCandidate(file.name, folderPath, noMedia = noMedia)) continue
                     if (types == setOf(RecoveryFileType.Video) && !VideoRecoveryPolicy.isCandidate(file.name, folderPath, noMedia = noMedia)) continue
+                    if (types == setOf(RecoveryFileType.Audio) && !AudioRecoveryPolicy.isCandidate(file.name, folderPath, noMedia = noMedia)) continue
                     if (!VisualRecoveryPolicy.isCandidate(file.name, folderPath, noMedia = noMedia)) continue
                     // Reject links to sources outside the storage volume as well as directory links.
-                    if (!file.canonicalPath.startsWith("$rootPrefix/")) continue
+                    val canonicalFile = file.canonicalPath
+                    if (!canonicalFile.startsWith("$rootPrefix/")) continue
                     val uri = Uri.fromFile(file)
+                    val volume = if (root == storageRoot) "external_primary" else root.name
+                    val identity = MediaFileIdentity.storage(volume, "", canonicalFile.removePrefix("$rootPrefix/"))
+                    if (isInLibrary(identity, uri.toString())) continue
                     val (type, resolvedMime) = identifyMedia(uri, file.name, null, policy) ?: continue
                     if (type !in types) continue
                     record(mediaFile(uri, file.name, resolvedMime, file.length(), file.lastModified(),
-                        folderPath, type, if (root == storageRoot) "external_primary" else root.name, false, noMedia = noMedia))
+                        folderPath, type, volume, false, identity = identity, noMedia = noMedia))
                 }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (error: Exception) { onReadError(error) }
@@ -711,13 +716,13 @@ class MediaStoreRecoveryScanRepository @Inject constructor(
 
     override suspend fun getSession(sessionId: String): RecoveryScanSession? = withContext(Dispatchers.IO) {
         val session = sessions[sessionId] ?: store.load(sessionId)?.also { sessions[sessionId] = it } ?: return@withContext null
-        val visualTypes = session.files.map { it.fileType }.filter(VisualRecoveryPolicy::isVisual).toSet()
-        if (visualTypes.isEmpty()) return@withContext session
+        val mediaTypes = session.files.map { it.fileType }.filter(MediaRecoveryPolicy::isMedia).toSet()
+        if (mediaTypes.isEmpty()) return@withContext session
         val warnings = session.warnings.toMutableSet()
         val volumes = if (Build.VERSION.SDK_INT >= 29) MediaStore.getExternalVolumeNames(context).toList() else listOf("external")
         var files = session.files
         var complete = true
-        visualTypes.forEach { type ->
+        mediaTypes.forEach { type ->
             val library = readMediaLibrary(volumes, type) { warnings += libraryAccessWarning(type) }
             if (!library.complete) { complete = false; warnings += libraryAccessWarning(type) }
             files = files.map(library::check)
