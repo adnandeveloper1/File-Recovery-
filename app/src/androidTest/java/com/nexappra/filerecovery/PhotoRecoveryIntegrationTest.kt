@@ -1,12 +1,19 @@
 package com.nexappra.filerecovery
 
 import android.content.ContentValues
+import android.content.ContentProvider
+import android.content.ContentResolver
 import android.content.ContextWrapper
+import android.content.pm.ProviderInfo
+import android.database.Cursor
+import android.database.MatrixCursor
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.CancellationSignal
 import android.os.Environment
+import android.os.ParcelFileDescriptor
 import android.provider.MediaStore
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -153,5 +160,99 @@ class PhotoRecoveryIntegrationTest {
         assertEquals(listOf(hiddenFile.id), rechecked.files.filter(PhotoRecoveryPolicy::accepts).map { it.id })
         assertEquals(true, rechecked.files.first().isInPhotoLibrary)
         assertEquals(false, rechecked.files.last().isInPhotoLibrary)
+    }
+
+    @Test fun filesTrashFallbackFindsRenamedPhotosWithMissingSizeAndRejectsGalleryAndOtherFormats() = runBlocking {
+        data class Row(val id: Long, val file: File, val mime: String?, val size: Long?, val trashed: Boolean, val hasPath: Boolean = true)
+        val renamed = rawPhoto("Provider/${prefix}_renamed")
+        val zeroSize = rawPhoto("Provider/${prefix}_zero.cache")
+        val gallery = rawPhoto("Provider/${prefix}_gallery.png")
+        val empty = File(fixtureDirectory, "Provider/${prefix}_empty.png").apply { writeBytes(byteArrayOf()) }
+        val pdf = File(fixtureDirectory, "Provider/${prefix}_document.jpg").apply { writeText("%PDF-1.7 not an image") }
+        val unknown = Row(1, renamed, null, null, true)
+        val zero = Row(2, zeroSize, "application/octet-stream", 0, true)
+        val visible = Row(3, gallery, "image/png", gallery.length(), false)
+        val staleTrashAlias = visible.copy(id = 4, trashed = true)
+        val rows = listOf(unknown, zero, visible, staleTrashAlias, visible.copy(trashed = true, hasPath = false),
+            Row(5, empty, "image/png", 0, true), Row(6, pdf, "application/pdf", pdf.length(), true),
+            Row(7, pdf, "video/mp4", pdf.length(), true))
+        val queries = java.util.Collections.synchronizedList(mutableListOf<Pair<Uri, Bundle>>())
+        val opened = java.util.Collections.synchronizedList(mutableListOf<Long>())
+        val provider = object : ContentProvider() {
+            override fun onCreate() = true
+            override fun query(uri: Uri, projection: Array<out String>?, selection: String?, selectionArgs: Array<out String>?, sortOrder: String?): Cursor =
+                error("Use the bundle query so trash filtering can be checked")
+            override fun query(uri: Uri, projection: Array<out String>?, queryArgs: Bundle?, cancellationSignal: CancellationSignal?): Cursor {
+                val args = Bundle(queryArgs ?: Bundle())
+                queries += uri to args
+                val trashOnly = args.getInt(MediaStore.QUERY_ARG_MATCH_TRASHED) == MediaStore.MATCH_ONLY
+                val selected = when {
+                    !trashOnly -> listOf(visible)
+                    "file" in uri.pathSegments -> rows
+                    else -> listOf(zero)
+                }
+                val columns = checkNotNull(projection)
+                return MatrixCursor(columns).apply {
+                    selected.forEach { row ->
+                        val values = mapOf<String, Any?>("_id" to row.id, "_display_name" to row.file.name, "mime_type" to row.mime,
+                            "_size" to row.size, "date_modified" to 0, "_data" to row.file.path.takeIf { row.hasPath },
+                            "relative_path" to "Pictures/$prefix/Provider/".takeIf { row.hasPath }, "is_trashed" to if (row.trashed) 1 else 0, "is_pending" to 0)
+                        addRow(columns.map { values[it] }.toTypedArray())
+                    }
+                }
+            }
+            override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor {
+                if (uri.pathSegments.firstOrNull() == "qa_export") {
+                    val name = checkNotNull(uri.lastPathSegment)
+                    require(name in setOf("Quick.zip", "Deep.zip"))
+                    return ParcelFileDescriptor.open(File(testDirectory, name), ParcelFileDescriptor.parseMode(mode))
+                }
+                val id = checkNotNull(uri.lastPathSegment).toLong()
+                opened += id
+                return ParcelFileDescriptor.open(rows.single { it.id == id }.file, ParcelFileDescriptor.MODE_READ_ONLY)
+            }
+            override fun getType(uri: Uri) = if (uri.pathSegments.firstOrNull() == "qa_export") "application/zip" else "image/png"
+            override fun insert(uri: Uri, values: ContentValues?): Uri? = error("Read-only fixture")
+            override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?): Int = error("Read-only fixture")
+            override fun update(uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<out String>?): Int = error("Read-only fixture")
+        }
+        provider.attachInfo(context, ProviderInfo().apply { authority = "media" })
+        val fixtureResolver = ContentResolver.wrap(provider)
+        val fixtureContext = object : ContextWrapper(context) { override fun getContentResolver() = fixtureResolver }
+        val fixtureRepository = MediaStoreRecoveryScanRepository(fixtureContext, store, premium,
+            MediaRecoveryWriter(fixtureContext, premium, RecoveryHistoryStore(fixtureContext)))
+        listOf(RecoveryScanMode.Quick, RecoveryScanMode.Deep).forEach { mode ->
+            val scan = fixtureRepository.performFullDeviceScan(RecoveryCategory.Photos, mode) {}
+            val found = scan.files.filter { it.displayName.startsWith(prefix) }
+            assertEquals("Only the readable renamed trash photos; warnings=${scan.warnings}", setOf(renamed.name, zeroSize.name), found.map { it.displayName }.toSet())
+            assertEquals(2, found.size)
+            assertTrue(found.all { it.isTrashed && it.mimeType == "image/png" && it.sizeBytes == imageBytes.size.toLong() })
+            assertFalse(opened.any { it in setOf(3L, 4L, 6L, 7L) })
+            assertTrue(queries.any { (uri, args) -> "file" in uri.pathSegments && args.getInt(MediaStore.QUERY_ARG_MATCH_TRASHED) == MediaStore.MATCH_ONLY &&
+                args.getInt(MediaStore.QUERY_ARG_MATCH_PENDING) == MediaStore.MATCH_EXCLUDE })
+            val zip = File(testDirectory, "${mode.name}.zip")
+            assertEquals(2, fixtureRepository.exportArchive(scan.id, found.map { it.id }.toSet(), "content://media/qa_export/${mode.name}.zip").recoveredCount)
+            ZipInputStream(zip.inputStream()).use { stream ->
+                repeat(2) { assertNotNull(stream.nextEntry); assertArrayEquals(imageBytes, stream.readBytes()) }
+                assertNull(stream.nextEntry)
+            }
+        }
+        assertArrayEquals(imageBytes, renamed.readBytes())
+        assertArrayEquals(imageBytes, zeroSize.readBytes())
+    }
+
+    @Test fun quickAndDeepReachAnAccessibleAndroidRecycleFolder() = runBlocking {
+        val path = InstrumentationRegistry.getArguments().getString("shared_trash_fixture")
+        Assume.assumeTrue("Supply an isolated shared-trash fixture from the QA runner", !path.isNullOrBlank())
+        val photo = File(checkNotNull(path))
+        assertTrue(photo.canonicalPath.startsWith(File(root, "Android/.Trash").canonicalPath + "/photo_recovery_qa_"))
+        assertTrue("The fixture must be readable with All Files access", photo.isFile && photo.canRead())
+        listOf(RecoveryScanMode.Quick, RecoveryScanMode.Deep).forEach { mode ->
+            val scan = repository.performFullDeviceScan(RecoveryCategory.Photos, mode) {}
+            val found = scan.files.singleOrNull { it.displayName == photo.name }
+            assertNotNull("$mode must reach the Android recycle folder; warnings=${scan.warnings}", found)
+            assertTrue(RecoveryFileSource.RecycleBin in checkNotNull(found).sources)
+            assertEquals("image/png", found.mimeType)
+        }
     }
 }

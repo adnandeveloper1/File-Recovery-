@@ -34,6 +34,13 @@ object VisualRecoveryPolicy {
     fun isCandidate(name: String, path: String, trashed: Boolean = false, noMedia: Boolean = false): Boolean =
         name != ".nomedia" && (trashed || hiddenReason(name, path, noMedia) != null || isRecycleLocation(name, path))
 
+    /** Search shared Android media/trash folders without entering app-private data or OBB folders. */
+    fun canExploreDirectory(path: String): Boolean {
+        val components = parts(path)
+        return !components.firstOrNull().equals("Android", true) || components.size == 1 ||
+            components[1].equals("media", true) || components[1].lowercase(Locale.ROOT) in recycleDirectories
+    }
+
     // Retain the previous visual-only policy for saved-selection migration.
     fun accepts(file: RecoverableFile): Boolean = !isVisual(file.fileType) || hasRecoveryContext(file)
 
@@ -43,8 +50,9 @@ object VisualRecoveryPolicy {
         (file.displayName != ".nomedia" && (file.isHidden || RecoveryFileSource.RecycleBin in file.sources))
 
     fun exploreQuickDirectory(path: String, noMedia: Boolean): Boolean =
-        noMedia || isCandidate("", path) || parts(path).firstOrNull()?.lowercase(Locale.ROOT) in quickParents ||
-            parts(path).take(2).map { it.lowercase(Locale.ROOT) } == listOf("android", "media")
+        canExploreDirectory(path) && (noMedia || isCandidate("", path) || path.equals("Android", true) ||
+            parts(path).firstOrNull()?.lowercase(Locale.ROOT) in quickParents ||
+            parts(path).take(2).map { it.lowercase(Locale.ROOT) } == listOf("android", "media"))
 
     /** Match hidden/recycle folder components rather than ordinary gallery paths. */
     fun indexedPathPatterns(): List<String> = listOf(".%/%", "%/.%/%") + recycleDirectories.flatMap { name ->

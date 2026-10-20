@@ -65,6 +65,26 @@ class PhotoRecoveryPolicyTest {
         assertFalse(patterns.any { it.contains("DCIM") || it.contains("Camera") || it.contains("Download") })
     }
 
+    @Test fun quickScanCanReachSharedAndroidRecycleFolders() {
+        listOf("Android", "Android/.Trash/com.sec.android.gallery3d", "Android/.Trash/com.samsung.android.providers.trash/123",
+            "Android/Recycle Bin/Photos", "Android\\.Trash\\Gallery").forEach { path ->
+            assertTrue(path, VisualRecoveryPolicy.canExploreDirectory(path))
+            assertTrue(path, PhotoRecoveryPolicy.exploreQuickDirectory(path, false))
+        }
+        assertTrue(PhotoRecoveryPolicy.accepts(photo("Android/.Trash/com.sec.android.gallery3d", "1234")))
+    }
+
+    @Test fun androidPrivateFoldersStayExcludedEvenWithHiddenAndNoMediaHints() {
+        listOf("Android/data", "Android/data/app/.Trash", "Android/obb/app", "Android/.private", "Android/mediaBackup").forEach { path ->
+            assertFalse(path, VisualRecoveryPolicy.canExploreDirectory(path))
+            assertFalse(path, PhotoRecoveryPolicy.exploreQuickDirectory(path, false))
+            assertFalse(path, PhotoRecoveryPolicy.exploreQuickDirectory(path, true))
+        }
+        listOf("", "Pictures/.Trash", "Android/media/app/data", "Android/.Trash/obb", "Android/MEDIA/app").forEach { path ->
+            assertTrue(path, VisualRecoveryPolicy.canExploreDirectory(path))
+        }
+    }
+
     @Test fun recoveredPhotoNamesAreVisibleAndRemoveOnlyReservedTrashPrefixes() {
         assertEquals("holiday.jpg", PhotoRecoveryPolicy.recoveryName(".holiday.jpg"))
         assertEquals("holiday.jpg", PhotoRecoveryPolicy.recoveryName(".trashed-1777777777-holiday.jpg"))
